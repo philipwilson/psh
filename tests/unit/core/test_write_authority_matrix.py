@@ -342,8 +342,68 @@ _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
               'getopts x a[0]', err=""),
 )
 
+# ---------------------------------------------------------------------------
+# Attribute changes on a READONLY variable.
+#
+# `readonly` freezes the value; bash 5.3.15 also refuses the attributes that
+# decide how a FUTURE value would be stored (`-i`, `-l`, `-u`), while still
+# allowing `-x`, which changes only who can see it.  psh applies all of them
+# silently.  The refusal half is the gate-triage row G17
+# (`test_declare_i_on_readonly_succeeds`), owned by slot 2.4; the `-x` half is
+# already correct and ships green as the boundary the refusal must not cross.
+#
+#   x=ab; readonly x; declare -i x; echo "rc=$?"; declare -p x
+#   bash -> rc=1, `declare -r x="ab"`    psh -> rc=0, `declare -ir x="ab"`
+# ---------------------------------------------------------------------------
+
+#: name, setup, variable, `declare -p` after a REFUSED attribute, after `-x`
+_RO_TARGETS = (
+    ("scalar", 'x=ab; readonly x; ', 'x',
+     'declare -r x="ab"', 'declare -rx x="ab"'),
+    ("indexed", 'a=(ab); readonly a; ', 'a',
+     'declare -ar a=([0]="ab")', 'declare -arx a=([0]="ab")'),
+    ("assoc", 'declare -A m=([k]=ab); readonly m; ', 'm',
+     'declare -Ar m=([k]="ab" )', 'declare -Arx m=([k]="ab" )'),
+)
+
+#: the three attributes bash refuses to add to a readonly variable
+_RO_ATTRS = (("i", "integer"), ("l", "lowercase"), ("u", "uppercase"))
+
+
+def _attr_cell(flag, name, target, setup, var, printed, owner=None) -> Cell:
+    verdict = "refused-G17-slot2.4" if owner else "allowed"
+    return Cell(
+        "declare", "flags", f"{name}-attribute-on-readonly-{target}-{verdict}",
+        setup + f'declare -{flag} {var}; echo "rc=$?"; declare -p {var}',
+        "rc={}\n{}\n".format(1 if owner else 0, printed),
+        err="readonly variable" if owner else "",
+        owner=owner,
+    )
+
+
+_READONLY_ATTRIBUTE_CELLS: Tuple[Cell, ...] = tuple(
+    _attr_cell(flag, name, target, setup, var, refused, owner="G17 → slot 2.4")
+    for target, setup, var, refused, _x in _RO_TARGETS
+    for flag, name in _RO_ATTRS
+) + tuple(
+    _attr_cell("x", "export", target, setup, var, exported)
+    for target, setup, var, _refused, exported in _RO_TARGETS
+) + (
+    # W1-N2 — a subscripted `declare` assignment is an ordinary element write in
+    # bash; psh rejects the whole word as a name and the element keeps its value.
+    #   a=(1 2); declare a[1]=q; declare -p a
+    #   bash -> rc=0, [1]="q"    psh -> rc=1, not a valid identifier, unchanged
+    Cell("declare", "value",
+         "subscripted-assignment-writes-the-element-W1-N2-slot1.18",
+         'a=(1 2); declare a[1]=q; echo "rc=$?"; declare -p a',
+         'rc=0\ndeclare -a a=([0]="1" [1]="q")\n',
+         owner="W1-N2 → slot 1.18"),
+)
+
+
 VALUE_CELLS: Tuple[Cell, ...] = (
-    _GREEN_VALUE_CELLS + _READONLY_ARRAY_CELLS + _FLIP_VALUE_CELLS
+    _GREEN_VALUE_CELLS + _READONLY_ARRAY_CELLS + _READONLY_ATTRIBUTE_CELLS
+    + _FLIP_VALUE_CELLS
 )
 
 
@@ -549,6 +609,13 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
     Cell("declare", "child-env", "allexport-local-reaches-child-C028-slot1.16",
          'set -a; f(){ local L=1; printenv L; }; f; echo "rc=$?"',
          '1\nrc=0\n', owner="C028 → slot 1.16"),
+
+    # G17 in every input mode: a readonly variable refuses an attribute that
+    # would change how a future value is stored.
+    Cell("declare", "flags", "integer-attribute-on-readonly-refused-G17-slot2.4",
+         'x=ab; readonly x; declare -i x; echo "rc=$?"; declare -p x',
+         'rc=1\ndeclare -r x="ab"\n', err="readonly variable",
+         owner="G17 → slot 2.4"),
 )
 
 #: The input modes every SPAWN cell runs in (D6).
@@ -674,12 +741,20 @@ ALL_CELLS: Tuple[Cell, ...] = (
     VALUE_CELLS + CHILD_CELLS + CWD_CELLS + SPAWN_CELLS
 )
 
+#: A finding token is one of three kinds, because the campaign registers
+#: findings in three places: ``C043`` is an inventory row, ``G17`` a gate-triage
+#: row, and ``W1-N2`` a wave N-row.  Only C-ids can be checked against a registry
+#: from here — the integrator writes G and W rows into ``LEDGER.md`` on the day,
+#: so for those the shape is the whole of what this can honestly verify.
+_TOKEN = r"(?:C\d{3}|G\d{2}|W\d-N\d+)"
+
 #: The one shape an xfail reason may take: the finding(s), then the owning slot.
-OWNER_RE = re.compile(r"^C\d{3}( ?, ?C\d{3})* → slot \d\.\d+$")
+OWNER_RE = re.compile(rf"^{_TOKEN}( ?, ?{_TOKEN})* → slot \d\.\d+$")
 
 _EVIDENCE = (Path(__file__).resolve().parents[3] / "docs" / "reviews" /
              "evidence" / "improvement_program_2026_09")
 _CID_RE = re.compile(r"C\d{3}")
+_TOKEN_RE = re.compile(_TOKEN)
 
 
 def _load(name: str):
@@ -738,7 +813,7 @@ def test_every_flip_cell_id_repeats_its_finding_and_slot() -> None:
         if cell.owner is None:
             continue
         slot = cell.owner.rsplit(" ", 1)[-1]
-        wanted = _CID_RE.findall(cell.owner) + [f"slot{slot}"]
+        wanted = _TOKEN_RE.findall(cell.owner) + [f"slot{slot}"]
         missing = [token for token in wanted if token not in cell.label]
         if missing:
             mismatched.append((cell.id, missing))
@@ -747,7 +822,8 @@ def test_every_flip_cell_id_repeats_its_finding_and_slot() -> None:
 
 def test_every_finding_named_in_a_label_exists() -> None:
     """Green cells name findings too (C194's readonly battery); a typo there
-    would point a later reader at nothing."""
+    would point a later reader at nothing.  Inventory C-ids only: a G-row or an
+    N-row is registered in LEDGER.md, which this deliberately does not read."""
     findings = known_findings()
     unknown = sorted({
         cid for cell in ALL_CELLS for cid in _CID_RE.findall(cell.label)
@@ -769,6 +845,13 @@ def test_cell_ids_are_unique() -> None:
     ("C043 → 1.4", "no slot keyword"),
     ("C43 → slot 1.4", "a malformed finding id"),
     ("C043 → slot 1.4 (pending)", "trailing prose that hides the real target"),
+    ("G1 → slot 2.4", "a gate-triage row short a digit"),
+    ("G170 → slot 2.4", "a gate-triage row with a digit too many"),
+    ("g17 → slot 2.4", "a lowercased gate-triage row"),
+    ("W1N2 → slot 1.18", "an N-row missing its hyphen"),
+    ("W-N2 → slot 1.18", "an N-row missing its wave number"),
+    ("W1-N → slot 1.18", "an N-row missing its number"),
+    ("N2 → slot 1.18", "an N-row missing its wave prefix"),
 ])
 def test_owner_validator_rejects_synthetic_offenders(reason: str, why: str) -> None:
     """Mutation check for the guard above: each of these MUST be refused."""
@@ -779,6 +862,9 @@ def test_owner_validator_rejects_synthetic_offenders(reason: str, why: str) -> N
     "C043 → slot 1.4",
     "C093, C094 → slot 1.18",
     "C093,C094 → slot 1.18",
+    "G17 → slot 2.4",
+    "W1-N2 → slot 1.18",
+    "C093, W1-N2 → slot 1.18",
 ])
 def test_owner_validator_accepts_the_declared_shapes(reason: str) -> None:
     """The offender test is only meaningful if the rule accepts real reasons."""
