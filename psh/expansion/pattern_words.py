@@ -35,6 +35,7 @@ pins the two shapes to the same answers.
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution, Word
+from .operands import DQ_WORD, OperandValue
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle: manager imports this
     from .manager import ExpansionManager
@@ -116,8 +117,6 @@ def _expansion_text(manager: 'ExpansionManager', part: ExpansionPart,
     historical behaviour exactly — it neither creates nor fixes that
     divergence, which is pinned both-sides.
     """
-    from .operands import DQ_WORD, OperandValue
-
     expanded = manager.expand_expansion(
         part.expansion, quote_ctx=DQ_WORD if part.quoted else None)
     if isinstance(expanded, OperandValue):
