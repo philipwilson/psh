@@ -78,6 +78,23 @@ def _run_mode(runner, script, mode, tmp_path):
     raise AssertionError(f"unknown mode {mode!r}")
 
 
+def _assert_no_diagnostics(row_id, mode, bash, psh):
+    """Both shells must run these rows silently.
+
+    Checked BEFORE stdout, and separately, because every row here is a
+    clean success in both shells: any stderr means the run did not do what
+    the row is about. In particular the host's transient exec fault
+    (`psh: error: [Errno 1] Operation not permitted`, seen across worktrees
+    under parallel load) drops exactly the output a C001 regression would
+    drop, so without this the flake is indistinguishable from the defect.
+    """
+    assert bash.stderr == "", f"{row_id}/{mode}: bash wrote {bash.stderr!r}"
+    assert psh.stderr == "", (
+        f"{row_id}/{mode}: psh wrote {psh.stderr!r} — if this names an exec "
+        f"fault (Errno 1 / Operation not permitted) it is the known host "
+        f"flake, not a C001 regression; re-run this node serially")
+
+
 @pytest.mark.parametrize("mode", ["dash_c", "script_file", "stdin"])
 @pytest.mark.parametrize("row_id,script",
                          DIFFERENTIAL_ROWS,
@@ -90,6 +107,7 @@ def test_pipeline_member_matches_bash(row_id, script, mode, tmp_path):
     psh = _run_mode(run_psh, script, mode, tmp_path)
     assert is_comparable(bash), bash
     assert is_comparable(psh), psh
+    _assert_no_diagnostics(row_id, mode, bash, psh)
     assert (psh.stdout, psh.returncode) == (bash.stdout, bash.returncode), (
         f"{row_id}/{mode}: bash={bash.stdout!r} rc={bash.returncode} "
         f"psh={psh.stdout!r} rc={psh.returncode}")
@@ -113,6 +131,7 @@ def test_whole_function_body_reaches_the_file_through_the_pipe(mode, tmp_path):
     bash = _run_mode(run_bash, script, mode, bash_dir)
     psh = _run_mode(run_psh, script, mode, psh_dir)
     assert is_comparable(bash) and is_comparable(psh)
+    _assert_no_diagnostics("bytes_reach_the_file", mode, bash, psh)
 
     bash_bytes = (bash_dir / "out.txt").read_text()
     psh_bytes = (psh_dir / "out.txt").read_text()
