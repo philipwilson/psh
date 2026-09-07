@@ -10916,3 +10916,84 @@
   stdout: "n\nh\nrc=0\nrc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# Pipeline members: exec-in-place is a ONE-SHOT (C001)
+#
+# The member process may execve() in place only for its OWN top-level simple
+# command. A function body, `eval` text or a sourced file dispatches after
+# that token is spent, so its first external command forks and the commands
+# after it still run. Before the one-shot they were silently discarded, and
+# the member's status became the external command's.
+#   f(){ /bin/echo A; echo B; }; f | cat   ->  A B   (was: A)
+# =============================================================================
+
+- name: pipeline_member_function_body_runs_after_external
+  description: "C001: a function member runs every command after its first external one"
+  command: 'f(){ /bin/echo A; echo B; }; f | cat'
+  stdout: "A\nB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_function_body_external_in_middle
+  description: "C001: an external command mid-body does not truncate a function member"
+  command: 'f(){ echo A; /bin/echo B; echo C; }; f | cat'
+  stdout: "A\nB\nC\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_nested_function_bodies
+  description: "C001: a nested function called from a function member does not exec in place"
+  command: 'g(){ /bin/echo G; echo g2; }; f(){ g; echo F; }; f | cat'
+  stdout: "G\ng2\nF\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_eval_text_runs_fully
+  description: "C001: `eval` text as a pipeline member runs past its first external command"
+  command: 'echo x | eval "/bin/echo A; echo B"'
+  stdout: "A\nB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_pipefail_status_is_last_command
+  description: "C001: a function member's status is its LAST command's, not the external one's"
+  command: 'set -o pipefail; f(){ /bin/echo A; false; }; f | cat; echo rc=$?'
+  stdout: "A\nrc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_failing_external_first
+  description: "C001: a failing external command first in a function member does not end the member"
+  command: 'f(){ /usr/bin/false; echo B; }; f | cat'
+  stdout: "B\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_builtin_last_reads_whole_body
+  description: "C001: the reading member sees every line a function member writes"
+  command: 'f(){ /bin/echo A; echo B; }; f | while read l; do echo "got:$l"; done'
+  stdout: "got:A\ngot:B\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_function_in_middle_stage
+  description: "C001: a function member in the MIDDLE of a three-stage pipeline runs fully"
+  command: 'f(){ /bin/echo A; echo B; }; echo seed | f | cat'
+  stdout: "A\nB\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_plain_external_still_execs_in_place
+  description: "C001 control: a plain external member keeps the exec-in-place optimization"
+  command: '/bin/echo A | cat'
+  stdout: "A\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_compound_bodies_still_run_fully
+  description: "C001 controls: brace group, subshell and loop members are unchanged"
+  command: '{ /bin/echo A; echo B; } | cat; ( /bin/echo C; echo D ) | cat; for i in 1; do /bin/echo E; echo F; done | cat'
+  stdout: "A\nB\nC\nD\nE\nF\n"
+  stderr: ""
+  exit_code: 0

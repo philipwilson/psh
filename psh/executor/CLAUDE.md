@@ -161,6 +161,19 @@ PipelineExecutor.execute()
    status, or 0 if all succeeded)
 ```
 
+**Exec-in-place is a ONE-SHOT, not a state.** A member process may `execve()`
+in place only for its OWN top-level simple command: the token is granted by
+`context.py#ExecutionContext.for_pipeline_member` (simple-command members
+only) and spent by `take_exec_in_place` at the single simple-command gateway
+`command.py#CommandExecutor.execute`, so a function body, `eval` text,
+sourced file or compound body never sees it and its external commands fork.
+While the token was instead a durable inherited flag,
+`f(){ /bin/echo A; echo B; }; f | cat` printed only `A` and lost the member's
+real status (C001). "Is this process a pipeline member?" is a *different*
+question, answered by the durable `ExecutionContext.is_pipeline_member`;
+"must this builtin redirect at the fd level?" is answered by
+`state.in_forked_child`. Neither is the token.
+
 ## Common Tasks
 
 ### Adding a New Builtin
