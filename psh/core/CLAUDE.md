@@ -507,7 +507,7 @@ and the bad-count `break`/`continue` shell exit
 (`special_builtin_usage_exit_shell`). `USAGE_ERROR_STATUS` is the one place the
 number 2 appears; `cd`, which is not a special builtin, borrows only that
 constant. bash 5.3.15 moved every cell of this family from 1 to 2 with no
-CHANGES/NEWS item, so the pins are empirical and carry `oracle_min("5.3")`.
+CHANGES/NEWS item, so the pins are empirical and are marked 5.3-only.
 
 The two child-status helpers are deliberately NOT the same shape, and the
 difference is probe-derived, not stylistic: `substitution_child_abort_status`
