@@ -65,7 +65,10 @@ ABSENT + nonzero rc ⇒ shell exited.
 | `unset a[0]` on a readonly array | continue | **EXIT rc 1** (5.3; 5.2 continued) |
 | `unset r s`, both readonly | both diagnosed, continue | BOTH diagnosed, **EXIT rc 1** |
 | `unset a[1]` on a scalar | continue rc 1 | continue rc 1 (NO exit) |
-| `unset 1bad` (bad identifier) | continue (no error at all) | continue |
+| `unset 1bad` (no `-v`) | continue (no error at all) | continue (no error at all) |
+| `unset -v 1bad` (bad identifier) | continue | **EXIT rc 1** (5.3; 5.2 continued) |
+| `unset -v 1bad 2bad` | both diagnosed, continue | BOTH diagnosed, **EXIT rc 1** |
+| EXIT trap's `$?` after any of these | the builtin's status | the builtin's status |
 | guard OUTSIDE `eval`: `eval 'set -q' \|\| echo caught` | continue | suppressed, rc 0 (5.3; 5.2 exited 2) |
 | guard OUTSIDE a trap action | continue | **EXIT** (the guard does not reach in) |
 | `break` at top level | continue (rc 0, error msg) | continue (rc 0, silent) |
@@ -80,9 +83,12 @@ In POSIX mode, a non-interactive shell exits when a special builtin reports a
 or a missing sourced file — and, since bash 5.3, on the fatal **operand
 errors**: an invalid identifier given to `export`/`readonly` (which also ends
 the operand loop at the FIRST one, in posix mode only) and an `unset` that
-refuses a readonly variable, array, array element or function (diagnosed for
+refuses a readonly variable, array, array element or function, or refuses an
+`unset -v` operand whose name is not a valid identifier (both diagnosed for
 every operand, then the exit). It still does NOT exit for a bad `trap` signal
-spec, an `unset` of a non-identifier, or an `unset` of a non-array subscript.
+spec, an `unset` of a non-array subscript, or a bad name given to `unset`
+WITHOUT `-v` (there bash falls back to a function lookup and stays silent).
+The EXIT trap observes the builtin's status as `$?`, not 0.
 The exit status is the builtin's own (2 for option/syntax usage errors, 1 for
 the readonly, identifier and dot cases). `break`/`continue` out of a loop are
 a silent no-op in POSIX mode.

@@ -567,12 +567,23 @@ defined), whereas PSH prints the definition (status 0). `readonly -f`,
 `export -f` and `unset -f` accept any defined function name in both shells,
 and a `-f` operand never takes the POSIX identifier exit described above.
 
-`unset` is a special builtin too, and bash 5.3 made its readonly refusals
-fatal in POSIX mode: `readonly r=1; unset r` (and the same for a readonly
-array, array element or function) reports `unset: r: cannot unset: readonly
-variable` and exits 1, in both shells. Unlike `export`, `unset` diagnoses
-*every* operand before exiting. Refusals that are not about readonly —
-`unset a[1]` on a scalar, an out-of-range subscript — stay a plain status 1.
+`unset` is a special builtin too, and bash 5.3 made two of its refusals fatal
+in POSIX mode. A readonly operand — `readonly r=1; unset r`, and the same for a
+readonly array, array element or function — reports `unset: r: cannot unset:
+readonly variable` and exits 1. So does an operand whose name is not a valid
+identifier, but only when `-v` is given: `unset -v 1bad` reports ``unset:
+`1bad': not a valid identifier`` and exits, while a bare `unset 1bad` stays a
+silent success in both shells, because without `-v` bash falls back to looking
+for a *function* of that name and never judges the word as a variable name. A
+subscripted operand is judged on its base name, so `unset -v 'a[0]'` is fine
+and `unset -v '1a[0]'` is not. Unlike `export`, `unset` diagnoses *every*
+operand before exiting, and the operands after a refused one are still unset.
+Refusals that are not about readonly or naming — `unset a[1]` on a scalar, an
+out-of-range subscript — stay a plain status 1.
+
+When one of these exits fires, `$?` inside an `EXIT` trap is the builtin's own
+status (1 for the operand and readonly cases, 2 for a usage error), matching
+bash, so a cleanup trap that branches on `$?` sees the failure.
 
 ### Case Modification and Unicode
 
