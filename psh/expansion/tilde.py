@@ -50,23 +50,41 @@ class TildeExpander:
 
         - The tilde PREFIX — the part that EXPANDS — ends at the first ``/``
           **or** ``:`` (:meth:`prefix_end`).
-        - The tilde WORD is wider: it ends at the first ``/`` **only**, so a
-          ``:`` sits INSIDE it, and bash makes the whole WORD literal when the
-          word is a pattern.
+        - The tilde WORD — the part bash makes LITERAL when the word is a
+          pattern — ends at the first ``/``. **EXCEPT in an assignment-shaped
+          word**, where ``:`` ends it too, so the remainder after a ``:`` stays
+          LIVE there. bash calls its ``tilde_find_word`` in assignment mode for
+          those; psh gets the same answer because
+          ``word_expander._expand_assignment_value_tildes`` splits the value on
+          ``:`` FIRST and hands this method one colon-free segment at a time.
 
-        The discriminating pair, probed against bash 5.3.15 with
-        ``HOME=/h/me`` — same leading ``~:``, and the only difference is which
-        side of the ``/`` the metacharacter falls on::
+        Proving the rule needs FOUR subjects per pattern, not two: ``o`` alone
+        is also what a shell that never expanded the tilde would print, so only
+        the full row separates the hypotheses. bash 5.3.15, ``HOME=/h/me``::
 
-            case '/h/me:XX'   in ~:*)   esac   # no match: the * is INSIDE the
-                                               #           word, so it is literal
-            case '/h/me:*/YY' in ~:*/*) esac   # MATCHES:  the first * is inside
-                                               #           and literal, the
-                                               #           second is past the
-                                               #           '/' and still globs
+            pattern   '/h/me:*'   '/h/me:XX'   '~:*'   '~:XX'
+            ~:*         M            o           o       o
+            ~:?         M(1)         o           o       o
+            ~:[a]       M(2)         o           o       o
+            (1) subject '/h/me:?'   (2) subject '/h/me:[a]'
+
+        Only "expanded, then the whole tilde word made literal" gives that row:
+        column 1 rules out "never expanded", columns 3-4 rule out "expanded but
+        the metacharacter left live".
+
+        The ``/`` boundary is one-sided, and the assignment exception flips the
+        ``:`` one::
+
+            case '/h/me:*/YY'  in ~:*/*)  esac   # M: 1st * inside and literal,
+                                                 #    2nd past the '/' and live
+            case 'x=/h/me:XX'  in x=~:*)  esac   # M: assignment-shaped, so the
+                                                 #    ':' ended the word and the
+                                                 #    * is LIVE
+            case '/h/me:XX'    in ~:*)    esac   # o: control, not assignment
+                                                 #    shaped, so the * is literal
 
         Round 2 of slot 1.11 escaped only the replacement and left the
-        remainder live, which is exactly the first row printing ``M``.
+        remainder live, which is exactly the last row printing ``M``.
         """
         cut = path.find('/', 1)
         return len(path) if cut == -1 else cut

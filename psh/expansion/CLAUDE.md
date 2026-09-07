@@ -129,11 +129,19 @@ Key behaviors controlled by Word AST structure:
   matches literally while the rest of the word keeps its metacharacter power —
   `TildeExpander.expand_escaped`. **Two boundaries, and the difference is
   load-bearing**: the tilde PREFIX (`#prefix_end`) ends at the first `/` OR `:`
-  and decides what EXPANDS; the tilde WORD (`#word_end`) ends at the first `/`
-  only, so a `:` sits inside it and bash makes all of it literal —
-  `env HOME=/h/me bash -c "case '/h/me:XX' in ~:*) echo M;; *) echo o;; esac"`
-  prints `o` (the `*` is inside the word) while the same case with `~:*/*`
-  against `/h/me:*/YY` prints `M` (the second `*` is past the `/`). bash quotes
+  and decides what EXPANDS; the tilde WORD (`#word_end`) — what bash makes
+  LITERAL — ends at the first `/`, **except in an assignment-shaped word, where
+  `:` ends it too**, so there the remainder after a `:` stays LIVE. psh gets the
+  exception right by construction: `word_expander.py#_expand_assignment_value_tildes`
+  splits the value on `:` before calling `expand_escaped`, so that path only
+  ever sees colon-free segments. Three commands separate the cases (bash 5.3.15,
+  `HOME=/h/me`): `case '/h/me:XX' in ~:*)` prints `o` (the `*` is inside the
+  word, literal); `case '/h/me:*/YY' in ~:*/*)` prints `M` (the second `*` is
+  past the `/`, live); `case 'x=/h/me:XX' in x=~:*)` prints `M` (assignment
+  shaped, so the `:` ended the word and the `*` is live). Note `o` alone proves
+  nothing — a shell that never expanded the tilde also prints `o` — so the
+  pinned rows carry four subjects per pattern, see
+  `TildeExpander.word_end`. bash quotes
   the result of tilde expansion in a pattern word and does NOT quote the result
   of parameter expansion:
   `env HOME='/a*b' bash -c "case /aXb in ~) echo T;; *) echo o;; esac"` prints

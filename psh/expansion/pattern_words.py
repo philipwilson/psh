@@ -35,12 +35,20 @@ contexts differ is what the replacement MEANS afterwards, and that is the
 The sibling for the ``${var#pat}`` family lives in ``expansion/operands.py``
 (``_expand_pattern_operand``): the parser hands those operators a raw operand
 STRING, not a Word, so they cannot consume this function. Both paths reach the
-same tilde boundary and expansion rules through ``TildeExpander.prefix_end`` /
-``TildeExpander.expand_split``, and both glob-escape the replacement
-(``operands.py`` at its ``_tilde_prefix`` call site, this module through the
-walk). ``tests/unit/expansion/test_pattern_words.py`` pins the two shapes to
-the same answers, INCLUDING on metacharacter-bearing homes — the cells that
+same tilde rules through ``TildeExpander`` — ``prefix_end`` (what EXPANDS),
+``expand_split`` (the replacement) and ``word_end`` (what becomes LITERAL) for
+this module; ``operands.py#_tilde_prefix``'s own ``/``-scan for the sibling —
+and both make the tilde text literal at their ``_tilde_prefix`` / walk call
+site. ``tests/unit/expansion/test_pattern_words.py`` pins the two shapes to the
+same answers, INCLUDING on metacharacter-bearing homes — the cells that
 discriminate the escape.
+
+What gets escaped is the whole tilde WORD, not just the replacement: the
+expanded text PLUS the remainder of the word (to the first ``/``, or to the
+first ``:`` when the word is assignment-shaped). Round 2 escaped the
+replacement alone and left that remainder live, which diverged from bash the
+moment it carried a metacharacter — ``case '/h/me:XX' in ~:*)`` printed ``M``
+where bash prints ``o``.
 """
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -67,9 +75,11 @@ def expand_pattern_word(
         escape: makes text match literally — ``glob_escape`` for a glob
             pattern (``case``, ``==``/``!=``), ``re.escape`` for the ``=~``
             regex source. Applied to every quoted part, to the result of
-            every quoted expansion, and to the text a TILDE prefix expands
-            to; unquoted literal text and unquoted expansion results are
-            passed through raw so their metacharacters stay live.
+            every quoted expansion, and to the whole tilde WORD — the text a
+            tilde prefix expands to PLUS the remainder of the word
+            (``TildeExpander.word_end``); unquoted literal text past the
+            word's boundary, and unquoted expansion results, are passed
+            through raw so their metacharacters stay live.
         dquote_literal: converts the text of a DOUBLE-QUOTED LiteralPart.
             ``[[ ]]`` needs this because its lexer keeps ``"$x"`` as the
             literal text ``$x`` inside a quoted LiteralPart, so the caller

@@ -274,13 +274,20 @@ class TestTildeWordBoundaryIsLiteral:
     """The whole tilde WORD is escaped, not just the replacement (V2-B1).
 
     bash's tilde PREFIX ends at the first ``/`` or ``:`` and decides what
-    EXPANDS; the tilde WORD is wider — it ends at the first ``/`` only, so a
-    ``:`` sits inside it — and bash makes the WORD literal in a pattern.
-    ``TildeExpander.word_end`` is that second boundary. Probed against bash
-    5.3.15 with ``HOME=/h/me``::
+    EXPANDS; the tilde WORD — what bash makes LITERAL in a pattern — ends at the
+    first ``/``, **except in an assignment-shaped word, where ``:`` ends it too**
+    and the remainder stays LIVE (``TestAssignmentColonException`` holds that
+    half). ``TildeExpander.word_end`` is the second boundary. Probed against
+    bash 5.3.15 with ``HOME=/h/me``::
 
         case '/h/me:XX'   in ~:*)   esac   # no match, the * is INSIDE
         case '/h/me:*/YY' in ~:*/*) esac   # MATCHES, the 2nd * is OUTSIDE
+        case 'x=/h/me:XX' in x=~:*) esac   # MATCHES, assignment-shaped: the ':'
+                                           # ended the word, so the * is LIVE
+
+    Note that ``o`` alone proves nothing — a shell that never expanded the
+    tilde prints ``o`` as well — so the separation needs four subjects per
+    pattern; see ``test_four_subject_separation``.
 
     Round 2 escaped only the replacement, so `~:*` kept a live `*` and psh
     answered `M` where bash and psh at base `b6ec6f95` answer `o`.
@@ -325,6 +332,26 @@ class TestTildeWordBoundaryIsLiteral:
                        .variable_expander.glob_escape)
         assert pat("~:*", home=home) == glob_escape(home + ":*")
 
+    @pytest.mark.parametrize("pattern,lit", [("~:*", "*"), ("~:?", "?"),
+                                             ("~:[a]", "[a]")])
+    def test_four_subject_separation(self, pat, pattern, lit):
+        """Four subjects, because ``o`` alone proves nothing.
+
+        A shell that never expanded the tilde ALSO answers ``o`` to
+        ``case '/h/me:XX' in ~:*)``. Only the full row separates "expanded,
+        then the whole word made literal" from "never expanded" and from
+        "expanded but the metacharacter left live". bash 5.3.15 gives
+        M / o / o / o for every pattern here, and the pattern STRING the owner
+        produces is what makes that row come out.
+        """
+        from psh.expansion.pattern import match_shell_pattern
+        produced = pat(pattern)
+        matches = lambda subj: match_shell_pattern(subj, produced)
+        assert matches(f"{HOME}:{lit}")       # 1: expanded, and literal
+        assert not matches(f"{HOME}:XX")      # 2: not live
+        assert not matches(f"~:{lit}")        # 3: the ~ really did expand
+        assert not matches("~:XX")            # 4: and did not stay literal
+
     def test_regex_consumer_escapes_the_whole_word(self, pat):
         assert pat("~:.", escape=re.escape) == re.escape("/h/me:.")
 
@@ -344,6 +371,48 @@ class TestTildeWordBoundaryIsLiteral:
         glob_escape = (captured_shell.expansion_manager
                        .variable_expander.glob_escape)
         assert pat("~:$u", home=home) == glob_escape(home + ":$u")
+
+
+class TestAssignmentColonException:
+    """In an ASSIGNMENT-shaped word bash's tilde word ends at ``:`` too.
+
+    This is the exception to the rule the round is named for, and it is the
+    half that nothing held before round 4: a maintainer who "simplifies" the
+    two sites onto the unqualified rule (the verifier's M5) makes psh diverge
+    from bash on ``case 'x=/h/me:XX' in x=~:*)``. bash 5.3.15, ``HOME=/h/me``::
+
+        case 'x=/h/me:XX'   in x=~:*)   esac   # M -- assignment: ':' ends the
+        case 'a=b:/h/me:XX' in a=b:~:*) esac   # M    word, remainder is LIVE
+        case 'x+=/h/me:XX'  in x+=~:*)  esac   # M
+        case '/h/me:XX'     in ~:*)     esac   # o -- control, not assignment
+
+    psh gets it right by construction:
+    ``word_expander._expand_assignment_value_tildes`` splits the value on ``:``
+    before calling ``expand_escaped``, so that path only ever sees a colon-free
+    segment and the escape cannot reach past the ``:``.
+    """
+
+    @pytest.mark.parametrize("prefix", ["x=", "x+=", "a=b:"])
+    def test_remainder_after_the_colon_stays_live(self, pat, prefix):
+        # The '*' is NOT escaped: it is past the assignment tilde word's ':'.
+        assert pat(f"{prefix}~:*") == f"{prefix}/h/me:*"
+
+    def test_non_assignment_control_escapes_the_remainder(self, pat):
+        # The same shape without the assignment prefix: the '*' IS escaped.
+        assert pat("~:*") == r"/h/me:\*"
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_replacement_still_escaped_in_an_assignment(self, pat,
+                                                        captured_shell, home):
+        """The exception widens the LIVE zone; it does not stop escaping the
+        replacement itself."""
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        assert pat("x=~:*", home=home) == "x=" + glob_escape(home) + ":*"
+
+    def test_regex_consumer_gets_the_exception_too(self, pat):
+        assert pat("x=~:.", escape=re.escape) == "x=" + re.escape("/h/me") + ":."
 
 
 class TestAssignmentSegmentEscape:

@@ -322,6 +322,9 @@ REGEX_DECOYS = [
     ("/a+b", "/ab"),
 ]
 
+GLOB_DECOY_IDS = [f"{h}-{s}" for h, s in GLOB_DECOYS]
+REGEX_DECOY_IDS = [f"{h}-{s}" for h, s in REGEX_DECOYS]
+
 #: Homes where the LITERAL pattern matches the home itself but a LIVE one does
 #: NOT — the exact-subject direction of the same rule, also derived.
 GLOB_EXACT_DISCRIMINATORS = ["/a[b]", "/a\\b"]
@@ -398,11 +401,16 @@ def test_metachar_home_all_three_input_modes(command, home, tmp_path):
 
 
 @pytest.mark.parametrize("parser", ["rd", "combinator"])
-@pytest.mark.parametrize("home", METACHAR_HOMES)
-def test_metachar_home_both_parsers(parser, home, tmp_path):
-    """Both parsers build the same pattern Word, so both get the same rule."""
-    command = ("s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-               "case $s in ~) echo tilde;; *) echo other;; esac; "
+@pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+def test_metachar_home_both_parsers(parser, home, subject, tmp_path):
+    """Both parsers build the same pattern Word, so both get the same rule.
+
+    Uses a DERIVED near-miss subject (see `GLOB_DECOYS`). Until round 4 this
+    row built its subject with `sed 's/./X/2'`, whose near-miss half is inert —
+    a live `/a*b` does not match `/X*b` either — while the module header two
+    hundred lines above claimed every decoy was a derived literal.
+    """
+    command = (f"case {subject!r} in ~) echo tilde;; *) echo other;; esac; "
                "case $HOME in ~) echo exact;; *) echo miss;; esac; "
                "[[ $HOME =~ ~ ]]; echo rc=$?")
     env = {"HOME": home}
@@ -420,25 +428,50 @@ def test_metachar_home_both_parsers(parser, home, tmp_path):
         f"bash={(bash.stdout, bash.returncode)!r}")
 
 
-@pytest.mark.parametrize("dirname", ["a*b", "a.b", "a[b]", "a?b", "a(b"])
-def test_tilde_plus_replacement_is_literal(dirname, tmp_path):
-    """``~+`` is ``$PWD``, and an ordinary directory name carries `.` or `[`.
+#: (directory name, near-miss basename) for `~+`, derived the same way as
+#: `GLOB_DECOYS`: a basename the LIVE `$PWD` pattern matches and the LITERAL one
+#: does not. `a.b` and `a(b` carry no GLOB metacharacter and so have no glob
+#: decoy; they are covered by the regex row below instead.
+TILDE_PLUS_GLOB_DECOYS = [("a*b", "aXb"), ("a?b", "aXb"), ("a[b]", "ab")]
+
+
+@pytest.mark.parametrize("dirname,near_miss", TILDE_PLUS_GLOB_DECOYS,
+                         ids=[d for d, _ in TILDE_PLUS_GLOB_DECOYS])
+def test_tilde_plus_replacement_is_literal(dirname, near_miss, tmp_path):
+    """``~+`` is ``$PWD``, and an ordinary directory name carries `*` or `[`.
 
     This is the realistic shape of round-2 B1: no HOME games, just a working
-    directory called ``my.project`` or ``a[1]``.
+    directory called ``my.project`` or ``a[1]``. The near-miss basename is a
+    derived literal, not a `sed` rewrite: the parent path is taken from `$PWD`
+    so the row is location independent, and only the basename varies.
     """
     workdir = tmp_path / dirname
     workdir.mkdir()
-    command = ("s=$(printf '%s' \"$PWD\" | sed 's/.$/X/'); "
-               "case $s in ~+) echo tilde;; *) echo other;; esac; "
-               "case $PWD in ~+) echo exact;; *) echo miss;; esac; "
-               "[[ $PWD =~ ~+ ]]; echo rc=$?")
+    command = (f'case "${{PWD%/*}}/{near_miss}" in ~+) echo tilde;; '
+               '*) echo other;; esac; '
+               'case "$PWD" in ~+) echo exact;; *) echo miss;; esac')
     bash = run_bash(["-c", command], cwd=str(workdir))
     run = run_psh(["-c", command], cwd=str(workdir))
     assert is_comparable(bash) and is_comparable(run), (bash, run)
+    # The row is only a control if bash actually distinguishes the two subjects.
+    assert bash.stdout == "other\nexact\n", (dirname, bash.stdout)
     assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
         f"cwd={dirname!r}: psh={(run.stdout, run.returncode)!r} "
         f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("dirname", ["a*b", "a.b", "a[b]", "a?b", "a(b"])
+def test_tilde_plus_regex_operand_compiles(dirname, tmp_path):
+    """The `~+` replacement reaches `re.compile` escaped, at any cwd shape."""
+    workdir = tmp_path / dirname
+    workdir.mkdir()
+    command = '[[ $PWD =~ ~+ ]]; echo rc=$?'
+    bash = run_bash(["-c", command], cwd=str(workdir))
+    run = run_psh(["-c", command], cwd=str(workdir))
+    assert is_comparable(bash) and is_comparable(run), (bash, run)
+    assert run.stdout == "rc=0\n", (dirname, run.stdout, run.stderr)
+    assert "invalid regex" not in run.stderr, run.stderr
+    assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode)
 
 
 @pytest.mark.parametrize("home", ["/a[b", "/a(b", "/a)b", "/a*b", "/a+b"])
@@ -461,10 +494,6 @@ def test_regex_operand_replacement_compiles(home, tmp_path):
 # ---------------------------------------------------------------------------
 # Derived-decoy rows: each one is known to CHANGE ANSWER when the escape moves.
 # ---------------------------------------------------------------------------
-
-GLOB_DECOY_IDS = [f"{h}-{s}" for h, s in GLOB_DECOYS]
-REGEX_DECOY_IDS = [f"{h}-{s}" for h, s in REGEX_DECOYS]
-
 
 class TestDerivedDecoys(ConformanceTest):
     """Near-miss subjects a LIVE replacement matches and a LITERAL one does not.
@@ -580,6 +609,16 @@ def test_derived_decoy_both_parsers(parser, home, subject, tmp_path):
 # `:` sits INSIDE it: `~:REST` is one tilde word and bash makes ALL of it
 # literal. `TildeExpander.word_end` is that boundary, distinct from
 # `prefix_end` (which stops at `/` OR `:` and decides what EXPANDS).
+#
+# EXCEPT in an ASSIGNMENT-SHAPED word, where `:` ends the tilde word too and the
+# remainder therefore stays LIVE — `case 'x=/h/me:XX' in x=~:*)` MATCHES in bash
+# while the non-assignment control `case '/h/me:XX' in ~:*)` does not. psh gets
+# this right because `_expand_assignment_value_tildes` splits the value on `:`
+# before escaping; `TestAssignmentColonExceptionSite` below is what holds it.
+#
+# `o` alone proves nothing: a shell that never expanded the tilde also prints
+# `o`. Separating the hypotheses needs four subjects per pattern — see
+# `TildeExpander.word_end` and `test_four_subject_separation` below.
 #
 # Round 2 escaped only the replacement here, which left the remainder live and
 # diverged from bash the moment the remainder carried a metacharacter:
@@ -725,3 +764,113 @@ class TestAssignmentSegmentSite(ConformanceTest):
             f'case {"x=" + subject + ":b"!r} in x=~:b) '
             'echo M;; *) echo o;; esac',
             env={"HOME": home})
+
+
+# ---------------------------------------------------------------------------
+# The ASSIGNMENT-shaped exception to the tilde-word rule.
+#
+# In an assignment-shaped word bash's tilde word ends at `:` as well as `/`, so
+# the remainder after a `:` stays LIVE — the opposite of the plain rule. Round 3
+# stated the rule without this exception in four places while the code had it
+# right, and no row in any layer could see the difference: a mutation applying
+# the stated rule uniformly (the round-3 verifier's M5) left 0/127 unit, 0/60
+# golden and 0/549 conformance nodes red. These rows are what dies under it.
+#
+# Every corpus row before this one puts a metacharacter-free segment after the
+# tilde (`x=a:~:b`, `x=~:b`, `x+=~`), so the escape's scope past the colon was
+# unobservable in all of them. The metacharacter has to live in a LATER SEGMENT,
+# not in HOME, for the decision to show.
+# ---------------------------------------------------------------------------
+
+ASSIGNMENT_COLON_EXCEPTION_ROWS = [
+    # bash MATCHES: assignment-shaped, so ':' ended the tilde word and the '*'
+    # in the later segment is a live pattern.
+    ("assign_colon_remainder_is_live",
+     'case "x=$HOME:XX" in x=~:*) echo M;; *) echo o;; esac'),
+    ("assign_colon_remainder_is_live_mid_value",
+     'case "x=a:$HOME:XX" in x=a:~:*) echo M;; *) echo o;; esac'),
+    ("assign_colon_remainder_is_live_append",
+     'case "x+=$HOME:XX" in x+=~:*) echo M;; *) echo o;; esac'),
+    ("assign_colon_remainder_is_live_qmark",
+     'case "x=$HOME:Q" in x=~:?) echo M;; *) echo o;; esac'),
+    ("assign_colon_remainder_is_live_bracket",
+     'case "x=$HOME:a" in x=~:[a]) echo M;; *) echo o;; esac'),
+    ("assign_colon_remainder_live_test_eq",
+     'if [[ "x=$HOME:XX" == x=~:* ]]; then echo M; else echo o; fi'),
+    # bash does NOT match: the same shape WITHOUT the assignment prefix, where
+    # the ':' is inside the tilde word and the '*' is literal. This control is
+    # what makes the rows above mean something.
+    ("control_no_assignment_remainder_is_literal",
+     'case "$HOME:XX" in ~:*) echo M;; *) echo o;; esac'),
+    ("control_no_assignment_remainder_matches_itself",
+     'case "$HOME:*" in ~:*) echo M;; *) echo o;; esac'),
+    # The replacement itself is still escaped inside an assignment: the
+    # exception widens the live zone, it does not switch the escape off.
+    ("assign_replacement_still_escaped",
+     'case "x=$HOME:XX" in x=~:*) echo M;; *) echo o;; esac; '
+     'case "x=/aXb:YY" in x=~:*) echo M2;; *) echo o2;; esac'),
+]
+
+
+class TestAssignmentColonExceptionSite(ConformanceTest):
+    """`:` ends the tilde word in an assignment-shaped word (round-4 B1)."""
+
+    @pytest.mark.parametrize("home", ["/h/me", "/a*b", "/a[b]"])
+    @pytest.mark.parametrize(
+        "command", [c for _, c in ASSIGNMENT_COLON_EXCEPTION_ROWS],
+        ids=[n for n, _ in ASSIGNMENT_COLON_EXCEPTION_ROWS])
+    def test_matches_bash(self, command, home):
+        self.assert_identical_behavior(command, env={"HOME": home})
+
+
+@pytest.mark.parametrize("home", ["/h/me", "/a*b"])
+@pytest.mark.parametrize(
+    "command", [c for _, c in ASSIGNMENT_COLON_EXCEPTION_ROWS],
+    ids=[n for n, _ in ASSIGNMENT_COLON_EXCEPTION_ROWS])
+def test_assignment_colon_exception_all_three_input_modes(command, home,
+                                                          tmp_path):
+    """D6: the exception holds in -c, script-file and stdin mode."""
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    assert is_comparable(bash), f"bash harness failure: {bash!r}"
+
+    for mode in ("dash_c", "script", "stdin"):
+        mode_dir = tmp_path / mode
+        mode_dir.mkdir()
+        if mode == "dash_c":
+            run = run_psh(["-c", command], cwd=str(mode_dir), env=dict(env))
+        elif mode == "script":
+            script = mode_dir / "case.sh"
+            script.write_text(command + "\n")
+            run = run_psh([str(script)], cwd=str(mode_dir), env=dict(env))
+        else:
+            run = run_psh([], stdin_data=command + "\n", cwd=str(mode_dir),
+                          env=dict(env))
+        assert is_comparable(run), f"harness failure in {mode}: {run!r}"
+        assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+            f"{mode} mode, HOME={home!r}, {command!r}: "
+            f"psh={(run.stdout, run.returncode)!r} "
+            f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("pattern,lit", [("~:*", "*"), ("~:?", "?"),
+                                         ("~:[a]", "[a]")])
+def test_four_subject_separation(pattern, lit, tmp_path):
+    """Four subjects per pattern, because `o` alone proves nothing.
+
+    A shell that never tilde-expanded also answers `o` to
+    `case '/h/me:XX' in ~:*)`. Only the M/o/o/o row separates "expanded, then
+    the whole word made literal" from "never expanded" (column 1) and from
+    "expanded but the metacharacter left live" (columns 3 and 4).
+    """
+    env = {"HOME": "/h/me"}
+    subjects = [f"/h/me:{lit}", "/h/me:XX", f"~:{lit}", "~:XX"]
+    command = "; ".join(
+        f"case {s!r} in {pattern}) echo M;; *) echo o;; esac" for s in subjects)
+    bash = run_bash(["-c", command], cwd=str(tmp_path), env=dict(env))
+    run = run_psh(["-c", command], cwd=str(tmp_path), env=dict(env))
+    assert is_comparable(bash) and is_comparable(run), (bash, run)
+    assert bash.stdout == "M\no\no\no\n", (pattern, bash.stdout)
+    assert run.stdout == bash.stdout, (pattern, run.stdout, bash.stdout)

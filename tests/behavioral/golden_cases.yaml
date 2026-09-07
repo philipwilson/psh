@@ -11445,3 +11445,27 @@
   stdout: "o\nM\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_r4_assignment_colon_exception_remainder_is_live
+  description: "C042 round-4 B1: in an ASSIGNMENT-shaped word bash's tilde word ends at : as well as /, so the remainder after the : stays LIVE - the exception the round-3 prose omitted"
+  env: {HOME: /h/me}
+  command: 'case "x=/h/me:XX" in x=~:*) echo M;; *) echo o;; esac; case "x=a:/h/me:XX" in x=a:~:*) echo M;; *) echo o;; esac; case "x+=/h/me:XX" in x+=~:*) echo M;; *) echo o;; esac'
+  stdout: "M\nM\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_no_assignment_remainder_is_literal_control
+  description: "C042 round-4 B1 control: the same shape WITHOUT an assignment prefix - the : is inside the tilde word and the * is literal, which is what makes the exception rows mean something"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:XX" in ~:*) echo M;; *) echo o;; esac; case "/h/me:*" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_four_subject_separation
+  description: "C042 round-4: o alone proves nothing - a shell that never expanded the tilde also prints o. Only M/o/o/o separates expanded-then-made-literal from never-expanded and from expanded-but-left-live"
+  env: {HOME: /h/me}
+  command: 'for s in "/h/me:*" "/h/me:XX" "~:*" "~:XX"; do case "$s" in ~:*) echo M;; *) echo o;; esac; done'
+  stdout: "M\no\no\no\n"
+  stderr: ""
+  exit_code: 0
