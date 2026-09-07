@@ -246,6 +246,25 @@ def variable_expansion_text(expansion: 'VariableExpansion',
     return f"${{{name}}}"
 
 
+def part_source_text(parts: List[WordPart], index: int) -> str:
+    """Part ``index`` of ``parts`` as source text, in its neighbours' context.
+
+    The ONE place a word part is turned back into source: a ``$name`` goes
+    through :func:`variable_expansion_text` with the FOLLOWING part as brace
+    context, everything else through its own ``__str__``. Every consumer that
+    rebuilds a word — :meth:`Word.display_text`, :meth:`Word.to_literal_string`,
+    the formatter, the tilde-prefix collapse, the array-subscript and
+    array-element flat texts — calls this rather than ``str(part)``, so none of
+    them can drift into its own spelling rule.
+    """
+    part = parts[index]
+    if isinstance(part, ExpansionPart) and isinstance(part.expansion,
+                                                      VariableExpansion):
+        nxt = parts[index + 1] if index + 1 < len(parts) else None
+        return variable_expansion_text(part.expansion, nxt)
+    return str(part)
+
+
 def _fuses_with(next_part: Optional[WordPart]) -> bool:
     """Would an unquoted bare ``$name`` swallow ``next_part``'s leading text?
 
@@ -362,21 +381,8 @@ class Word(ASTNode):
                        for i in range(len(self.parts)))
 
     def part_source_text(self, index: int) -> str:
-        """Part ``index``'s source text, spelled in its neighbours' context.
-
-        The ONE place a part is turned back into source: a ``$name`` goes
-        through :func:`variable_expansion_text` with the FOLLOWING part as
-        brace context, everything else through its own ``__str__``. Every
-        consumer that rebuilds a word (``display_text``, ``to_literal_string``,
-        FormatterVisitor) calls this rather than ``str(part)``, so none of them
-        can drift into its own spelling rule.
-        """
-        part = self.parts[index]
-        if isinstance(part, ExpansionPart) and isinstance(part.expansion,
-                                                          VariableExpansion):
-            nxt = self.parts[index + 1] if index + 1 < len(self.parts) else None
-            return variable_expansion_text(part.expansion, nxt)
-        return str(part)
+        """This word's part ``index`` as source text (:func:`part_source_text`)."""
+        return part_source_text(self.parts, index)
 
     def to_literal_string(self) -> str:
         """The word's text after quote removal, with expansions unexpanded.

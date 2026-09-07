@@ -60,6 +60,7 @@ from ..ast_nodes import (
     VariableExpansion,
     Word,
     WordPart,
+    part_source_text,
 )
 from ..core import TopLevelAbort
 from .glob import GLOB_METACHARS, has_glob_metacharacters
@@ -416,9 +417,10 @@ class WordExpander:
             if getattr(part, 'quoted', False):
                 return None
             if isinstance(part, ExpansionPart):
-                # str(part) is psh's canonical pre-expansion source rendering
-                # (the same one display_text/SimpleCommand.args use).
-                verbatim.append(str(part))
+                # The ONE part-to-source spelling (the same one display_text /
+                # SimpleCommand.args use), so a `${v}` after the tilde prefix
+                # is not rebuilt as a bare `$v`.
+                verbatim.append(part_source_text(parts, idx))
                 continue
             if isinstance(part, LiteralPart):
                 text = part.text
