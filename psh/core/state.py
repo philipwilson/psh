@@ -156,10 +156,13 @@ class ShellState:
         self.getopts_state = GetoptsState()
 
         # Remembered command locations (the `hash` builtin / bash's
-        # COMMAND EXECUTION hashing). Any PATH write empties it — the
-        # scope manager fires the observer below for every PATH
-        # assignment/local/unset (bash 5.2, probe-verified: even
-        # ``PATH=$PATH`` and ``local PATH=...`` clear; ``cd`` does not).
+        # COMMAND EXECUTION hashing). This table is the SOLE subscriber to
+        # the PATH observer, and ``ScopeManager._effective_binding_changed``
+        # is the sole judge of when it is stale: every rebinding of PATH
+        # empties it, including the scope and temp-env POPS that write no
+        # name (C044). Probe-verified against bash 5.3.15: ``PATH=$PATH``,
+        # ``local PATH=...`` and returning from a function that held a
+        # ``local PATH`` all clear it; an ordinary return and ``cd`` do not.
         # The lambda reads self.command_hash at call time so clone_for_child()'s
         # table replacement stays wired.
         self.command_hash = CommandHashTable()
@@ -623,7 +626,10 @@ class ShellState:
         self.scope_manager = parent.scope_manager.clone()
 
         # Command hash table (bash: `hash ls; (hash)` lists it in the subshell)
-        # + PATH observer. The lambda reads self.command_hash at call time.
+        # + PATH observer — the child's cloned scope manager gets its own
+        # subscription to the child's own table, so a PATH rebinding in the
+        # child never reaches the parent's. The lambda reads
+        # self.command_hash at call time.
         self.command_hash = parent.command_hash.copy()
         self.scope_manager.path_changed = lambda: self.command_hash.clear()
         self.scope_manager.variable_changed = self._sync_exported_variable

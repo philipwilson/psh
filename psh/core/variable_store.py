@@ -228,7 +228,7 @@ class VariableStore:
             arr.set(int(key) if isinstance(key, int) else 0, value)
             self._sm.set_variable(target, arr, attributes=VarAttributes.ARRAY)
             return
-        self._sm._notify_path_changed(target)
+        self._sm._effective_binding_changed(target)
         self._sm._notify_variable_changed(target)
 
     def unset_element(self, name: str, key: Union[int, str]) -> None:
@@ -256,7 +256,7 @@ class VariableStore:
             var.value.unset(str(key))
         else:
             return
-        self._sm._notify_path_changed(target)
+        self._sm._effective_binding_changed(target)
         self._sm._notify_variable_changed(target)
 
     # ------------------------------------------------------------------ #
