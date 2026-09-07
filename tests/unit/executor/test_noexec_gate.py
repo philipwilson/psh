@@ -9,9 +9,17 @@ stops the rest of that list. Repro:
 
 Owner 2 — the refusal in
 ``psh/builtins/environment.py#apply_set_o_option``. bash will not turn noexec
-on in an interactive shell at all, so ``$-`` never grows an ``n``; the
-command line is exempt because bash parses invocation flags before it decides
-the shell is interactive.
+on for a shell in the session the user is typing at, so ``$-`` never grows an
+``n``; the command line is exempt because bash parses invocation flags before
+it decides the shell is interactive.
+
+Owner 3 — the fact owner 2 reads: ``options['interactive_session']``,
+established once by the top-level shell, INHERITED across every fork, and
+dropped by ``psh/executor/child_policy.py#leave_interactive_session``. Keying
+owner 2 on the per-child ``interactive`` flag instead made a command
+substitution of an interactive shell silently yield the empty string (verify
+round 1, B2); the scope is pinned at a real terminal in
+tests/system/interactive/test_noexec_interactive_pty.py.
 
 The behaviour these guards protect is pinned against bash in
 tests/conformance/bash/test_noexec_per_statement_conformance.py; these hold the
@@ -20,6 +28,7 @@ two decision sites themselves, with synthetic option state.
 import pytest
 
 from psh.builtins.environment import apply_set_o_option
+from psh.executor.child_policy import leave_interactive_session
 from psh.shell import Shell
 
 
@@ -75,45 +84,57 @@ class TestInteractiveRefusal:
         created.state.options['noexec'] = False
 
     def test_non_interactive_shell_accepts_it(self, shell):
-        shell.state.options['interactive'] = False
+        shell.state.options['interactive_session'] = False
         apply_set_o_option(shell, 'noexec', True)
         assert shell.state.options['noexec'] is True
 
     def test_interactive_shell_refuses_it(self, shell):
-        shell.state.options['interactive'] = True
+        shell.state.options['interactive_session'] = True
         try:
             apply_set_o_option(shell, 'noexec', True)
             assert shell.state.options['noexec'] is False
             # $- must not grow an `n` either — that readout is the observable.
             assert 'n' not in shell.state.options.option_string()
         finally:
-            shell.state.options['interactive'] = False
+            shell.state.options['interactive_session'] = False
+
+    def test_the_per_child_interactive_flag_is_NOT_the_predicate(self, shell):
+        """The round-1 defect, pinned: a command-substitution child recomputes
+        `interactive` to False while still belonging to the session, so keying
+        the refusal on it let `x=$(set -n; echo hi)` lose the value."""
+        shell.state.options['interactive'] = False
+        shell.state.options['interactive_session'] = True
+        try:
+            apply_set_o_option(shell, 'noexec', True)
+            assert shell.state.options['noexec'] is False
+        finally:
+            shell.state.options['interactive_session'] = False
 
     def test_the_command_line_is_exempt(self, shell):
         """`bash -i -n` really does execute nothing: bash parses invocation
         flags before it decides the shell is interactive."""
-        shell.state.options['interactive'] = True
+        shell.state.options['interactive_session'] = True
         try:
             apply_set_o_option(shell, 'noexec', True, from_invocation=True)
             assert shell.state.options['noexec'] is True
         finally:
-            shell.state.options['interactive'] = False
+            shell.state.options['interactive_session'] = False
 
     def test_turning_it_OFF_is_never_refused(self, shell):
         """The refusal is on the ENABLE direction only — `set +n` in an
         interactive shell that inherited the flag from `-n` must still work."""
-        shell.state.options['interactive'] = True
+        shell.state.options['interactive_session'] = True
         shell.state.options['noexec'] = True
         try:
             apply_set_o_option(shell, 'noexec', False)
             assert shell.state.options['noexec'] is False
         finally:
-            shell.state.options['interactive'] = False
+            shell.state.options['interactive_session'] = False
 
     def test_short_flag_and_long_option_agree(self, shell):
         """`set -n` routes through the SAME toggle engine as `set -o noexec`,
         so a short flag can never bypass the refusal."""
-        shell.state.options['interactive'] = True
+        shell.state.options['interactive_session'] = True
         try:
             shell.run_command("set -n")
             assert shell.state.options['noexec'] is False
@@ -122,7 +143,7 @@ class TestInteractiveRefusal:
             shell.run_command("shopt -so noexec")
             assert shell.state.options['noexec'] is False
         finally:
-            shell.state.options['interactive'] = False
+            shell.state.options['interactive_session'] = False
 
     def test_other_short_flags_still_toggle(self, shell):
         """Discrimination: routing the short cluster through the toggle engine
@@ -133,3 +154,59 @@ class TestInteractiveRefusal:
         shell.run_command("set +eu")
         assert shell.state.options['errexit'] is False
         assert shell.state.options['nounset'] is False
+
+
+class TestSessionFactOwnership:
+    """`interactive_session` is established once and inherited, and there is
+    exactly ONE place that drops it."""
+
+    def test_a_child_shell_inherits_it(self):
+        parent = Shell(norc=True)
+        parent.state.options['interactive_session'] = True
+        child = Shell.for_subshell(parent)
+        assert child.state.options['interactive_session'] is True
+        # …while `interactive` is recomputed per child and may disagree. That
+        # divergence is the whole reason the two facts are separate.
+        assert 'interactive' in child.state.options
+
+    def test_a_child_of_a_non_session_shell_stays_out(self):
+        parent = Shell(norc=True)
+        parent.state.options['interactive_session'] = False
+        child = Shell.for_subshell(parent)
+        assert child.state.options['interactive_session'] is False
+
+    def test_leaving_the_session_drops_it(self):
+        shell = Shell(norc=True)
+        shell.state.options['interactive_session'] = True
+        leave_interactive_session(shell)
+        assert shell.state.options['interactive_session'] is False
+        # …and the refusal then lets noexec through, which is what an async
+        # compound child needs.
+        apply_set_o_option(shell, 'noexec', True)
+        assert shell.state.options['noexec'] is True
+
+    def test_leaving_is_idempotent_and_safe_off_session(self):
+        shell = Shell(norc=True)
+        shell.state.options['interactive_session'] = False
+        leave_interactive_session(shell)
+        leave_interactive_session(shell)
+        assert shell.state.options['interactive_session'] is False
+
+    def test_it_has_no_dollar_dash_letter_and_no_set_o_spelling(self):
+        """bash exposes no such flag, so neither does psh: it must not leak
+        into `$-` or become settable by name."""
+        from psh.core.option_registry import OPTION_REGISTRY, OptionCategory
+        spec = OPTION_REGISTRY['interactive_session']
+        assert spec.dollar_dash is None
+        assert spec.short_flag is None
+        assert spec.category is OptionCategory.INTERNAL
+        shell = Shell(norc=True)
+        shell.state.options['interactive'] = False
+        shell.state.options['interactive_session'] = False
+        before = shell.state.options.option_string()
+        shell.state.options['interactive_session'] = True
+        assert shell.state.options.option_string() == before, (
+            "interactive_session leaked into $-; the `i` letter belongs to "
+            "`interactive`, which a child recomputes")
+        rc = shell.run_command("set -o interactive_session")
+        assert rc != 0, "an INTERNAL option must not be settable by name"

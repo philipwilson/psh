@@ -22,8 +22,8 @@ set -o allexport    # Export all variables on assignment
 set -o braceexpand  # Enable brace expansion (on by default)
 set -o noclobber    # Prevent overwriting files with >
 set -o noglob       # Disable filename globbing
-set -o noexec       # Read commands but do not execute (ignored by
-                    # interactive shells, like bash)
+set -o noexec       # Read commands but do not execute (like bash, a shell
+                    # in the session you are typing at refuses to set it)
 set -o notify       # Report finished background jobs at the next prompt (see 17.3)
 set -o verbose      # Print input lines as they are read
 set -o ignoreeof    # Prevent Ctrl-D from exiting the shell
@@ -989,7 +989,7 @@ fi
 | set -o allexport | Yes | Yes | Full support |
 | set -o noglob | Yes | Yes | Full support |
 | set -o verbose | Yes | Yes | Full support |
-| set -o noexec (-n) | Yes | Yes | Full support (the flag is re-read before every statement, so a mid-script `set -n` stops everything after it on the same input; an interactive shell refuses to turn it on at all, like bash) |
+| set -o noexec (-n) | Yes | Yes | Full support (the flag is re-read before every statement, so a mid-script `set -n` stops everything after it on the same input, including when a signal-trap action sets it. Like bash, a shell in the session you are typing at refuses to turn it on — that covers the prompt itself and its synchronous children, including command substitutions; an asynchronous compound such as `( set -n; … ) &` leaves the session and does honour it. The `-n` command-line flag is never refused.) |
 | set -o posix / POSIXLY_CORRECT | Yes | Yes | Full support (posix mode via `set -o posix`, the `--posix` startup flag, or the `POSIXLY_CORRECT` variable/environment; two-way coupled to `POSIXLY_CORRECT` like bash — enabling binds it to `y`, disabling unsets it) |
 | **Signal Handling** |
 | trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR/RETURN; a bare `exit` at a trap action's top level uses the status at trap ENTRY, following bash 5.3 (POSIX interp 1602) |

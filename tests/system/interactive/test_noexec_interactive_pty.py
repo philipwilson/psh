@@ -22,6 +22,7 @@ N-8). No row sends a signal, so the SIGINT-disposition trap of N-7 does not
 apply; the assertions are about option state and command execution only.
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -59,6 +60,14 @@ def _spawn(argv, cwd, extra=()):
     child.send("\r")
     child.expect("P1> ")
     return child
+
+
+def _spawn_shell(shell, cwd):
+    """One spawn for both columns: the resolved oracle, or psh from this tree."""
+    if shell == "oracle":
+        return _spawn([_ORACLE.path, "--norc", "-i"], cwd)
+    return _spawn([sys.executable, "-u", "-m", "psh", "--norc",
+                   "--force-interactive"], cwd)
 
 
 def _drive(child, lines):
@@ -102,11 +111,7 @@ _LINES = [
 def test_interactive_shell_ignores_noexec(shell, tmp_path):
     cwd = tmp_path / shell
     cwd.mkdir()
-    if shell == "oracle":
-        child = _spawn([_ORACLE.path, "--norc", "-i"], cwd)
-    else:
-        child = _spawn([sys.executable, "-u", "-m", "psh", "--norc",
-                        "--force-interactive"], cwd)
+    child = _spawn_shell(shell, cwd)
     try:
         transcript = _drive(child, _LINES)
     finally:
@@ -128,6 +133,92 @@ def test_interactive_shell_ignores_noexec(shell, tmp_path):
             flags = line.split("dash=", 1)[1].strip()
             assert "n" not in flags, f"{shell}: $- grew an n: {flags!r}"
     assert "Traceback (most recent call last)" not in transcript
+
+
+# (id, line, what the row must show) — the SCOPE of the refusal, measured at a
+# real prompt in both shells. It reaches every SYNCHRONOUS child of the session
+# and is dropped by an asynchronous COMPOUND one; a backgrounded SIMPLE command
+# keeps it, because bash forks those on a path that never leaves the session.
+# Each line prints `R=[…]`; `expected` is that payload.
+_SCOPE_ROWS = [
+    # --- refused: the child is still in the session -----------------------
+    ("cmdsub", 'x=$(set -n; echo hi); printf "R=[%s]\\n" "$x"', "hi"),
+    ("backticks", 'x=`set -n; echo hi`; printf "R=[%s]\\n" "$x"', "hi"),
+    ("cmdsub_in_subshell",
+     '( x=$(set -n; echo deep); printf "R=[%s]\\n" "$x" )', "deep"),
+    ("cmdsub_reports_option_off",
+     'x=$(set -n; set -o | grep -c "noexec.*off"); printf "R=[%s]\\n" "$x"',
+     "1"),
+    ("sync_subshell",
+     '( set -n; printf "R=[%s]\\n" SYNC )', "SYNC"),
+    ("brace_group", '{ set -n; printf "R=[%s]\\n" BRACE; }', "BRACE"),
+    ("pipeline_member",
+     'echo x | { set -n; printf "R=[%s]\\n" MEMBER; }', "MEMBER"),
+    ("process_substitution",
+     'cat <(set -n; printf "R=[%s]\\n" PROCSUB)', "PROCSUB"),
+    # A backgrounded SIMPLE command is NOT an async compound: bash keeps the
+    # session for it, so the refusal still applies.
+    ("async_function",
+     'f() { set -n; printf "R=[%s]\\n" FN; }; f & wait', "FN"),
+    ("async_eval",
+     'eval "set -n; printf \'R=[%s]\\n\' EV" & wait', "EV"),
+    # --- honoured: the child left the session ------------------------------
+    ("async_subshell",
+     '( set -n; printf "R=[%s]\\n" ASYNC ) & wait', None),
+    ("async_brace_group",
+     '{ set -n; printf "R=[%s]\\n" ASYNCBRACE; } & wait', None),
+    ("async_pipeline",
+     '{ set -n; printf "R=[%s]\\n" ASYNCPIPE; } | cat & wait', None),
+    ("async_and_or",
+     'true && { set -n; printf "R=[%s]\\n" ASYNCAO; } & wait', None),
+    ("async_for_loop",
+     'for i in 1; do set -n; printf "R=[%s]\\n" ASYNCFOR; done & wait', None),
+    # The drop is INHERITED: the substitution inside an async subshell honours
+    # noexec too, so `inner` never runs and the payload is empty. (The outer
+    # printf is a statement of the SUBSHELL, whose own noexec was never set,
+    # so it still prints — which is what makes the empty payload visible.)
+    ("cmdsub_inside_async_subshell",
+     '( x=$(set -n; echo inner); printf "R=[%s]\\n" "$x" ) & wait', ""),
+]
+
+
+@pytest.mark.parametrize("case_id,line,expected", _SCOPE_ROWS,
+                         ids=[r[0] for r in _SCOPE_ROWS])
+@pytest.mark.parametrize("shell", ["oracle", "psh"])
+def test_where_the_refusal_reaches(shell, case_id, line, expected, tmp_path):
+    """Both directions of the refusal's SCOPE, both shells asserted.
+
+    `expected is None` means the row must print nothing at all: noexec was
+    honoured, so the printf never ran. Keying on the payload rather than on a
+    return code is what makes "nothing ran" distinguishable from "ran and said
+    nothing" (D3).
+
+    Round 1 shipped a refusal keyed on the per-child `interactive` flag, and
+    the cmdsub rows here were the silent regression that found: `$(set -n; echo
+    hi)` yielded the empty string.
+    """
+    cwd = tmp_path / f"{shell}-{case_id}"
+    cwd.mkdir()
+    child = _spawn_shell(shell, cwd)
+    try:
+        transcript = _drive(child, [line])
+    finally:
+        child.close(force=True)
+
+    assert "<TIMEOUT>" not in transcript, transcript[-600:]
+    assert "Traceback (most recent call last)" not in transcript
+    payloads = [m for m in re.findall(r"R=\[([^\]]*)\]", transcript)]
+    # The terminal echoes the typed line too, so a literal `R=[%s]` in the echo
+    # is not an answer; only a substituted payload is.
+    payloads = [p for p in payloads if p != "%s"]
+    if expected is None:
+        assert not payloads, (
+            f"{shell}/{case_id}: noexec was NOT honoured — got {payloads}\n"
+            f"{transcript[-600:]}")
+    else:
+        assert payloads == [expected], (
+            f"{shell}/{case_id}: expected [{expected!r}], got {payloads}\n"
+            f"{transcript[-600:]}")
 
 
 @pytest.mark.parametrize("shell", ["oracle", "psh"])

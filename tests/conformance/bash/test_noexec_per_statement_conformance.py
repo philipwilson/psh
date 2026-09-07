@@ -15,9 +15,13 @@ must not run is ``touch marker``, and the pin asserts the FILE is absent (D3).
 The shell's own exit status is asserted too — a skipped command contributes
 success, so ``set -n; false`` and ``set -n; exit 7`` both leave 0.
 
+The gate is asked AFTER pending signal traps are dispatched, so a trap action
+that turns the flag on gates the statement it precedes rather than the one
+after it (`set_from_signal_trap*` below).
+
 Interactive shells are the complement and are pinned at a real terminal in
 tests/system/interactive/test_noexec_interactive_pty.py: bash refuses to turn
-noexec on at a prompt at all.
+noexec on for a shell in the session the user is typing at.
 """
 import os
 
@@ -76,6 +80,20 @@ _ROWS = [
     # A trap installed BEFORE the flag: its action is read but not executed.
     ("exit_trap_after",
      "trap 'touch marker; echo intrap' EXIT; echo before; set -n; echo after"),
+    # The flag set FROM a signal trap action must gate the statement it
+    # PRECEDES, not the one after it. Pending traps therefore run ahead of the
+    # gate (verify round 1, B1): with the gate first this row left `marker`
+    # behind while `echo after` was correctly skipped — exactly one statement
+    # leaked.
+    ("set_from_signal_trap",
+     'trap "set -n" USR1; echo before; kill -USR1 $$; touch marker; echo after'),
+    ("set_from_signal_trap_o_spelling",
+     'trap "set -o noexec" USR1; echo before; kill -USR1 $$; touch marker; '
+     'echo after'),
+    # …including when the trap action turns it on from inside a function.
+    ("set_from_signal_trap_via_function",
+     'g() { set -n; }; trap g USR1; echo before; kill -USR1 $$; touch marker; '
+     'echo after'),
     # A skipped command contributes SUCCESS: neither `false` nor `exit 7`
     # can change the shell's exit status once noexec is on.
     ("false_after", "echo before; set -n; false"),
@@ -133,6 +151,23 @@ def test_the_user_guide_noexec_claim(tmp_path):
     assert not (psh_dir / "marker").exists()
     assert psh.stdout == bash.stdout == "before\n"
     assert psh.returncode == bash.returncode == 0
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_trap_dispatch_ordering_is_unchanged(mode, tmp_path):
+    """The control for the trap rows above: moving the gate must not move the
+    trap. A plain action still runs at the SAME statement boundary in both
+    shells, so a failure of the rows above cannot be trap-delivery latency."""
+    script = ('trap "echo TRAP" USR1; echo A; kill -USR1 $$; echo B; echo C')
+    bash_dir = tmp_path / f"bash-trapord-{mode}"
+    psh_dir = tmp_path / f"psh-trapord-{mode}"
+    bash_dir.mkdir()
+    psh_dir.mkdir()
+
+    bash = _run(run_bash, script, str(bash_dir), mode)
+    psh = _run(run_psh, script, str(psh_dir), mode)
+
+    assert psh.stdout == bash.stdout == "A\nTRAP\nB\nC\n"
 
 
 @pytest.mark.parametrize("mode", MODES)

@@ -38,6 +38,16 @@ NOEXEC_SCRIPT = (f"{NOEXEC_PINS}::test_noexec_stops_the_rest_of_the_input"
                  "[same_line-script]")
 NOEXEC_INTERACTIVE = (f"{NOEXEC_UNIT}::TestInteractiveRefusal::"
                       "test_interactive_shell_refuses_it")
+NOEXEC_CHILD_FLAG = (f"{NOEXEC_UNIT}::TestInteractiveRefusal::"
+                     "test_the_per_child_interactive_flag_is_NOT_the_predicate")
+NOEXEC_SESSION_DROP = (f"{NOEXEC_UNIT}::TestSessionFactOwnership::"
+                       "test_leaving_the_session_drops_it")
+NOEXEC_SESSION_INHERIT = (f"{NOEXEC_UNIT}::TestSessionFactOwnership::"
+                          "test_a_child_shell_inherits_it")
+NOEXEC_TRAP = (f"{NOEXEC_PINS}::test_noexec_stops_the_rest_of_the_input"
+               "[set_from_signal_trap-dash_c]")
+NOEXEC_TRAP_ORDER = (f"{NOEXEC_PINS}::"
+                     "test_trap_dispatch_ordering_is_unchanged[dash_c]")
 NULL_BARE = f"{NULL_PINS}::test_null_command_status[bare-dash_c]"
 NULL_STDIN = f"{NULL_PINS}::test_null_command_status[stdin_redirect-dash_c]"
 NULL_REDIRECT_FILE = (f"{NULL_PINS}::"
@@ -64,8 +74,8 @@ ARMS = [
         # flipped by an earlier statement of the same unit.
         "noexec-gate-removed",
         CORE,
-        "            if self.state.options.get('noexec', False):",
-        "            if False:  # MUTATION: the per-statement gate is gone",
+        "                if self.state.options.get('noexec', False):",
+        "                if False:  # MUTATION: the per-statement gate is gone",
         breaks=[NOEXEC_SAME_LINE],
         # The null-command rule is a different owner entirely.
         stays_green=[NULL_BARE],
@@ -76,9 +86,9 @@ ARMS = [
         # subshell) unprotected — the shape the per-unit check already had.
         "noexec-gate-narrowed-to-the-program-root",
         CORE,
-        "            if self.state.options.get('noexec', False):",
-        "            if (self.state.options.get('noexec', False)\n"
-        "                    and context is not ROOT_SEQUENCE):",
+        "                if self.state.options.get('noexec', False):",
+        "                if (self.state.options.get('noexec', False)\n"
+        "                        and context is not ROOT_SEQUENCE):",
         breaks=[NOEXEC_SAME_LINE],
         stays_green=[NULL_BARE],
     ),
@@ -88,12 +98,75 @@ ARMS = [
         "interactive-refusal-removed",
         ENVIRONMENT,
         "    if (option == 'noexec' and enable and not from_invocation\n"
-        "            and shell.state.options.get('interactive')):\n"
+        "            and shell.state.options.get('interactive_session')):\n"
         "        return\n",
         "",
         breaks=[NOEXEC_INTERACTIVE],
         # Non-interactive execution is untouched by the refusal.
         stays_green=[NOEXEC_SAME_LINE],
+    ),
+    Arm(
+        # Verify round 1, B1: the gate must be asked AFTER pending traps are
+        # dispatched. Putting it back in front lets a trap action that turns
+        # noexec on land one statement too late — and ONLY that one statement
+        # leaks, so a coarser pin would not see it.
+        "noexec-gate-back-in-front-of-pending-traps",
+        CORE,
+        "                self.shell.trap_manager.run_pending_traps()\n"
+        "\n"
+        "                if self.state.options.get('noexec', False):",
+        # A pure ORDER SWAP: the gate answers first, traps are still dispatched
+        # for every statement that passes it (the `if False:` swallows the
+        # original gate body, which the arm re-spells above it). Anything that
+        # also stopped traps from running would break the ordering control and
+        # be rejected as indiscriminate.
+        "                if self.state.options.get('noexec', False):\n"
+        "                    exit_status = 0\n"
+        "                    break\n"
+        "                self.shell.trap_manager.run_pending_traps()\n"
+        "                if False:",
+        breaks=[NOEXEC_TRAP],
+        # Plain trap ordering is untouched by the swap, which is what makes
+        # the arm's reason its own rather than "traps broke".
+        stays_green=[NOEXEC_TRAP_ORDER],
+    ),
+    Arm(
+        # Verify round 1, B2: the refusal must read the INHERITED session
+        # fact, not the per-child `interactive` flag a cmdsub child
+        # recomputes. This arm restores exactly the round-1 predicate.
+        "refusal-back-on-the-per-child-interactive-flag",
+        ENVIRONMENT,
+        "            and shell.state.options.get('interactive_session')):",
+        "            and shell.state.options.get('interactive')):",
+        breaks=[NOEXEC_CHILD_FLAG],
+        # Non-interactive execution reads neither flag, so it must survive:
+        # an arm that also broke it would not be pointing at the child scope.
+        # (The top-level refusal is NOT the discrimination row — the two flags
+        # agree there only when the shell owns a terminal, which a test
+        # fixture's shell does not.)
+        stays_green=[NOEXEC_SAME_LINE],
+    ),
+    Arm(
+        # The other half of B2: without the drop, an async compound child
+        # keeps refusing and `( set -n; … ) &` runs its body.
+        "async-compound-keeps-the-session",
+        "psh/executor/child_policy.py",
+        "    shell.state.options['interactive_session'] = False\n",
+        "    pass  # MUTATION: the async compound keeps the session\n",
+        breaks=[NOEXEC_SESSION_DROP],
+        stays_green=[NOEXEC_SESSION_INHERIT],
+    ),
+    Arm(
+        # The session fact must be INHERITED, not recomputed per child. This
+        # arm re-establishes it for every shell, child included — which is
+        # what `interactive` already does and what B2 was.
+        "session-fact-recomputed-per-child",
+        "psh/shell.py",
+        "        if top_level:\n"
+        "            self.state.options['interactive_session'] = interactive_family",
+        "        self.state.options['interactive_session'] = interactive_family",
+        breaks=[NOEXEC_SESSION_INHERIT],
+        stays_green=[NOEXEC_INTERACTIVE],
     ),
     Arm(
         # C041's whole fix: the status propagation. Returning a hard 0 is

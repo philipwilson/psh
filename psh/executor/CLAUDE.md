@@ -394,9 +394,20 @@ flipped by an earlier statement of the same list stops the rest of that list, an
 skipped statement contributes status 0. `scripting/source_processor.py` keeps a per-input-unit
 fast path, but it is no longer the only check; it was, and that is why
 `psh -c 'echo before; set -n; touch marker; echo after'` used to run everything.
-The complement lives in `builtins/environment.py#apply_set_o_option`: an INTERACTIVE shell
-refuses to turn noexec on at all (so `$-` never grows an `n`), while the command line is
-exempt, because bash parses invocation flags before it decides the shell is interactive.
+The gate is asked AFTER `trap_manager.run_pending_traps()`, so a trap action that sets the
+flag gates the statement it precedes rather than the one after it
+(`trap "set -n" USR1; echo before; kill -USR1 $$; touch m1` leaves no `m1`).
+
+The complement lives in `builtins/environment.py#apply_set_o_option`: a shell in the session
+the user is typing at refuses to turn noexec on at all (so `$-` never grows an `n`), while
+the command line is exempt, because bash parses invocation flags before it decides the shell
+is interactive. Its predicate is `options['interactive_session']` — established once by the
+top-level shell and INHERITED across every fork — never `options['interactive']`, which each
+child RECOMPUTES from its own stdin and therefore reads False inside a command substitution.
+`child_policy.py#leave_interactive_session` is the one place the fact is dropped, called from
+the async-COMPOUND child sites (`subshell.py` ×2, `pipeline.py` when the pipeline is
+backgrounded); a backgrounded SIMPLE command keeps it, the same compound-vs-simple split
+`core/trap_manager.py#drop_trap_action_frames_in_forked_compound` already draws.
 
 ### A command that runs no program still reports a status
 
