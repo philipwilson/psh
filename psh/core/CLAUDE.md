@@ -163,6 +163,14 @@ mutations through the store. Known Phase-4 gap: `executor/array.py` still mutate
 an existing array via a local alias (`array = var_obj.value; array.set(...)`),
 which the textual ban cannot see; it is already readonly-guarded (P1).
 
+**Write-authority net** (`tests/unit/core/test_write_authority_matrix.py`): the
+behavioral counterpart to that textual ban — every write site (assignment,
+arithmetic, the declaration builtins, namerefs, `read`/`mapfile`, scope exit,
+`cd`) is asked what it wrote by every observer that can disagree (stored value,
+attribute flags, effective lookup, the child's environment, the executable
+dispatched next, the fd position, the real working directory), so a write that
+lands in the wrong place is caught even where no ban applies.
+
 ## State Components
 
 ### Variables

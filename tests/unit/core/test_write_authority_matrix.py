@@ -51,7 +51,6 @@ from pathlib import Path
 from typing import Tuple, Union
 
 import pytest
-
 from shell_oracle import hermetic_shell_env, is_comparable, run_psh
 
 #: Sentinel for ``Cell.rc`` when the exact status is not the subject of the cell
