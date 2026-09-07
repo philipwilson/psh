@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.786.0 (2026-09-07) - Combinator parser keeps trailing redirects (Improvement Program 2026-09, Wave 1 slot 1.9)
+- P1 WRONG TARGET / lost status (C020; slot 1.9; combinator parser only — the
+  recursive-descent parser was already correct): a trailing redirect on
+  `[[ … ]]` or `(( … ))` was split into a SECOND statement, so the redirect
+  never applied and the test's exit status was discarded — `[[ a == b ]]
+  >/dev/null; echo $?` printed 0, `if (( 0 )) >/dev/null` took the wrong
+  branch, `readonly r=5; (( r=9 )) 2>/dev/null` leaked its diagnostic, and
+  `while (( i-- )) >/dev/null; do …; done` never terminated. One owner,
+  `psh/parser/combinators/trailing_redirects.py#TrailingRedirectMixin._parse_trailing_redirects`,
+  consumed after `))` and `]]` and mixed into both host classes; the helper
+  had existed TWICE (a `ControlStructureParsers` method and
+  `_collect_definition_redirects` for function definitions) and both copies
+  are deleted. Audit: of the 13 AST classes with a `redirects` field exactly
+  these two productions dropped them; the other 11 were already
+  RD-equal. Guard: an RD↔combinator AST-equality matrix over every
+  redirect-bearing AST class, mutation-proven against four synthetic
+  offenders. 57 pins red on base (24 matrix, 33 conformance rows in three
+  modes through the direct combinator API).
+- Tooling: the new module joins the strictest mypy override block in
+  `pyproject.toml` (277 files) and the untyped-defs / endpoint registries
+  without exemptions.
+- Ledger: W1-N46 (combinator AST nodes carry no source position, so
+  `--debug-ast` omits the `@lineN` annotations the RD parser prints) and
+  W1-N48 (the combinator statement list accepts a compound followed by a bare
+  word with no separator where RD and bash reject rc 2; hidden at the CLI by
+  the RD trial parse) registered, both pre-existing.
+- Verification: adversarial round 1 PASS (58 novel CLI rows × 3 modes + 72 direct-API rows AST-equal to RD; 51 red at base incl. 12 hangs; three mutations caught; report `tmp/program-2026-09/verify/slot-1.9.md`).
+
 ## 0.785.0 (2026-09-07) - Readonly attribute refusal follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.4)
 - Attribute changes on a readonly variable follow bash 5.3 (CHANGES 5.3-alpha
   item llllll): `declare`/`typeset`/`local`/`readonly` refuse any REQUESTED

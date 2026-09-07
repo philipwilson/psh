@@ -4,9 +4,11 @@
 mixins — ``LoopParserMixin`` (loops.py), ``ConditionalParserMixin``
 (conditionals.py), and ``StructureParserMixin`` (structures.py). Each
 mixin references attributes set in ``ControlStructureParsers.__init__``
-(``self.commands``, ``self.tokens``) and shared helper methods defined on
-the composing class (``self._parse_trailing_redirects``). mypy cannot see
-those when checking a mixin in isolation.
+(``self.commands``, ``self.tokens``) and shared helper methods the composing
+class inherits from ``TrailingRedirectMixin``
+(``self._parse_trailing_redirects``, whose sole definition lives in
+``combinators/trailing_redirects.py``). mypy cannot see those when checking
+a mixin in isolation.
 
 ``ControlStructureProtocol`` declares exactly that shared surface so the
 mixins type-check. It is purely a typing artifact: each mixin declares it
@@ -34,7 +36,8 @@ class ControlStructureProtocol(Protocol):
     tokens: "TokenParsers"
     _compound_body: "Parser"
 
-    # Shared helpers defined on ControlStructureParsers (__init__.py)
+    # Shared helper inherited from TrailingRedirectMixin
+    # (combinators/trailing_redirects.py) — the package-wide owner.
     def _parse_trailing_redirects(
         self, tokens: List["Token"], pos: int
     ) -> Tuple[List["Redirect"], int]: ...
