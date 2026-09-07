@@ -52,6 +52,11 @@ class StdinBinding:
     (``ShellState.clone_for_child``): the reader inside
     ``echo hi | ( cat & wait )`` is two forks below the pipe.
 
+    This class lives in ``psh/core`` rather than the io layer that reports to
+    it because ``ShellState`` constructs it and the import-layering guard keeps
+    ``psh.core`` near-leaf (it may not import ``psh.io_redirect``); the io layer
+    is the REPORTER, not the owner.
+
     The binding is SCOPED to the frame that made it — it ends when that
     compound's redirects are undone, and an inner construct never releases an
     outer one's. bash approximates the same fact with a single global flag that
