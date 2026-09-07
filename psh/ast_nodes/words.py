@@ -232,9 +232,21 @@ def variable_expansion_text(expansion: 'VariableExpansion',
 
     A bare ``$v{1,2}`` is NOT re-braced: ``{`` is not a name char, and the
     fusion into ``v1``/``v2`` is what the source asked for — ``braced`` is the
-    only thing that separates it from ``${v}{1,2}``. Everywhere else braces are
-    free: ``${v}`` and ``$v`` name the same parameter, so this errs toward
-    writing them.
+    only thing that separates it from ``${v}{1,2}``.
+
+    DELIBERATE CONSERVATISM — do not "simplify" this back. The rule serves two
+    renderers that close the source's quote gap DIFFERENTLY: the formatter
+    merges adjacent same-quote regions, ``display_text`` drops quotes entirely.
+    Asking each caller to compute its own adjacency would put the decision back
+    in two places, which is the shape of the defect this function exists to
+    delete. So the rule takes the union and sometimes writes braces a minimal
+    renderer would omit (``foo$v"dq"`` -> ``foo${v}"dq"``). That is safe
+    everywhere except before ``{``: ``${v}`` and ``$v`` name the same parameter,
+    and the special parameters brace legally and equivalently — note that a
+    NAME is never invented in the process, so ``$#`` before ``x`` renders
+    ``${#}x`` (``$#`` then a literal), never ``${#x}`` (the length of ``x``),
+    and ``$!`` before ``x`` renders ``${!}x``, never the indirection
+    ``${!x}``. Probed on bash 5.3.15 for ``? @ * # $ ! - 0 1 2``.
 
     The RUNTIME half of the same rule is
     ``psh/expansion/brace_expansion_words.py#_fuse_bare_variables``, which
