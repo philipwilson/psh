@@ -887,17 +887,49 @@ class JobManager:
         """
         return self.resolve_job_spec(spec).job
 
+    def does_job_control(self) -> bool:
+        """True when THIS process is the job-controlling shell.
+
+        Job control belongs to the shell process. bash disables it in every
+        subshell, and so does psh: a forked child — a pipeline member, a
+        subshell, a brace group or a substitution child — must never create
+        process groups for the commands it runs, hand the terminal to them,
+        or reclaim it afterwards. ``state.in_forked_child`` is the single
+        authority for "am I a forked child"; this names what follows from it
+        for job control, and is the ONE rule read by the two terminal-control
+        entry points below and by the launcher's standalone-pgid step.
+
+        Without it a pipeline member that runs an external command from a
+        function body, `eval` text or a sourced file opens a nested
+        foreground session, hands the terminal to its own child, and then
+        calls tcsetpgrp from a process group that no longer owns the
+        terminal — SIGTTOU stops the member, and the interactive shell
+        reports `[1]+ Stopped` instead of finishing the pipeline
+        (`ll(){ /bin/ls /dev/null; }; ll | cat` at an interactive prompt).
+        """
+        if self.shell_state is None:
+            return False
+        return not self.shell_state.in_forked_child
+
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid, when this shell owns the terminal.
 
-        Returns None when there is no usable tty, job control is
-        unsupported, or another process group currently owns the terminal.
-        In all of those cases the executors must NOT transfer terminal
-        control around a foreground job. This is a real capability check —
-        it replaces the old "pytest in sys.modules" test-awareness (under a
-        test runner the shell doesn't own the terminal, so this returns
-        None there naturally).
+        Returns None when this process is not the job-controlling shell (see
+        :meth:`does_job_control`), when there is no usable tty, when job
+        control is unsupported, or when another process group currently owns
+        the terminal. In all of those cases the executors must NOT transfer
+        terminal control around a foreground job. This is a real capability
+        check — it replaces the old "pytest in sys.modules" test-awareness
+        (under a test runner the shell doesn't own the terminal, so this
+        returns None there naturally).
+
+        A forked pipeline member would otherwise pass the ownership test for
+        the wrong reason: tcgetpgrp returns the PIPELINE's pgid and the member
+        IS in that group, so it would conclude it is the terminal-owning
+        shell.
         """
+        if not self.does_job_control():
+            return None
         if not self.shell_state or not self.shell_state.supports_job_control:
             return None
         try:
@@ -923,6 +955,13 @@ class JobManager:
         Returns:
             True if transfer was successful, False otherwise
         """
+        if not self.does_job_control():
+            # A forked child never moves the terminal (see does_job_control).
+            if self.shell_state and self.shell_state.options.get('debug-exec'):
+                print(f"DEBUG {context}: Skipping terminal transfer (forked child)",
+                      file=sys.stderr)
+            return False
+
         if not self.shell_state or not self.shell_state.supports_job_control:
             if self.shell_state and self.shell_state.options.get('debug-exec'):
                 print(f"DEBUG {context}: Skipping terminal transfer (no TTY support)", file=sys.stderr)

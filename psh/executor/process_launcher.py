@@ -200,6 +200,12 @@ class ProcessLauncher:
             # stdout/stderr might not support flush() in some contexts
             pass
 
+        # Whether THIS process is the job-controlling shell, decided in the
+        # PARENT (where the answer is unambiguous) and handed to the child:
+        # after the fork the child sets its own in_forked_child flag, so
+        # reading it there would answer a different question.
+        job_control = self.job_manager.does_job_control()
+
         # Fork with termination signals blocked across the fork window
         # (the v0.300 lost-signal race fix — see fork_with_signal_window's
         # docstring in child_policy.py). The child unblocks them in
@@ -209,11 +215,11 @@ class ProcessLauncher:
         if pid == 0:  # Child process
             # apply_child_signal_policy() (called in _child_setup_and_exec)
             # resets handlers to SIG_DFL and unblocks these signals.
-            self._child_setup_and_exec(execute_fn, config)
+            self._child_setup_and_exec(execute_fn, config, job_control)
             # Does not return - child exits via os._exit()
 
         # Parent process
-        pgid = self._parent_setup(pid, config)
+        pgid = self._parent_setup(pid, config, job_control)
         return pid, pgid
 
     def launch_background_job(self, execute_fn: Callable[[], int],
@@ -235,7 +241,8 @@ class ProcessLauncher:
         return 0
 
     def _child_setup_and_exec(self, execute_fn: Callable[[], int],
-                              config: ProcessConfig):
+                              config: ProcessConfig,
+                              job_control: bool = True):
         """Child process setup and execution.
 
         This method handles all child process initialization:
@@ -258,6 +265,11 @@ class ProcessLauncher:
         Args:
             execute_fn: Function to execute
             config: Process configuration
+            job_control: Whether the FORKING process is the job-controlling
+                shell (``JobManager.does_job_control``, evaluated in the
+                parent). False in a forked child, where this standalone
+                command must stay in its parent's process group instead of
+                starting one of its own.
         """
         exit_code = 127  # Default: command not found
 
@@ -314,12 +326,20 @@ class ProcessLauncher:
                           f"pgid={current_pgid}", file=sys.stderr)
 
             elif config.role == ProcessRole.SINGLE:
-                # Standalone command: create own process group
-                os.setpgid(0, 0)
+                # Standalone command: create own process group — but ONLY
+                # when the forking process is the job-controlling shell. In a
+                # forked child (a pipeline member running an external command
+                # from a function body, `eval` text or a sourced file; a
+                # subshell; a brace group) job control is off, so the command
+                # INHERITS the group, exactly as bash does. A group of its own
+                # there is not the terminal's foreground group, so Ctrl-C at
+                # the prompt would never reach it.
+                if job_control:
+                    os.setpgid(0, 0)
 
                 if self.state.options.get('debug-exec'):
-                    print(f"DEBUG ProcessLauncher: Child {os.getpid()} is single command",
-                          file=sys.stderr)
+                    print(f"DEBUG ProcessLauncher: Child {os.getpid()} is single command "
+                          f"(job_control={job_control})", file=sys.stderr)
 
             # 2. Reset signals to default (unified child policy)
             from .child_policy import apply_child_signal_policy
@@ -404,20 +424,35 @@ class ProcessLauncher:
         return (self.state.is_script_mode
                 or not self.state.options.get('interactive', False))
 
-    def _parent_setup(self, pid: int, config: ProcessConfig) -> int:
+    def _parent_setup(self, pid: int, config: ProcessConfig,
+                      job_control: bool = True) -> int:
         """Parent process setup after fork.
 
         This method handles process group assignment from the parent side.
         It must be called immediately after fork() to coordinate with the child.
+        Both sides call setpgid deliberately: whichever runs first wins and the
+        other's EPERM/EACCES is ignored, so the group exists before either
+        process depends on it.
 
         Args:
             pid: Child process ID
             config: Process configuration
+            job_control: Whether THIS process is the job-controlling shell
+                (``JobManager.does_job_control``). False in a forked child,
+                where a standalone command stays in this process's group — the
+                parent half of the same rule the child applies.
 
         Returns:
             Process group ID
         """
         # Determine process group
+        if config.role == ProcessRole.SINGLE and not job_control:
+            # Job control is off in a forked child: the command INHERITS this
+            # process's group rather than leading one of its own, so it stays
+            # in the terminal's foreground group and Ctrl-C at the prompt
+            # reaches it (bash disables job control in every subshell).
+            return os.getpgrp()
+
         if config.role == ProcessRole.PIPELINE_LEADER or config.role == ProcessRole.SINGLE:
             # Child becomes its own process group leader
             pgid = pid
