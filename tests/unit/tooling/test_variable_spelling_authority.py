@@ -17,16 +17,28 @@ sides: a static ratchet that forbids a second spelling decision in the
 rendering trees, and a census that every user-visible printer preserves the
 source's braces.
 
-**Ratchet scope and honest limits.** Only ``psh/visitor/`` and
-``psh/ast_nodes/`` are scanned — the trees that turn an AST back into text
-(a ``${`` elsewhere is a diagnostic message or a scanner, not a rendering).
+Two ratchets run, each with a synthetic offender.
+
+**Ratchet 1 — no second ``${…}`` spelling.** Only ``psh/visitor/`` and
+``psh/ast_nodes/`` are scanned: the trees that turn an AST back into text (a
+``${`` elsewhere is a diagnostic message or a scanner, not a rendering).
 Three construction shapes are detected: an f-string with interpolation whose
 literal text holds ``${``, a ``+`` concatenation with a ``${``-bearing string
 constant, and a bare ``'${'`` element of a list/tuple (``''.join`` style).
 NOT detected: ``%``/``str.format`` templating, a spelling assembled one
 character at a time, or a rendering helper living outside the two scanned
-trees. Extend the detector if such a shape ever arrives — do not allowlist
-the module.
+trees.
+
+**Ratchet 2 — rebuild a word through the authority.** Anywhere under
+``psh/``, walking a word's ``.parts`` and calling ``str()`` on the loop
+variable rebuilds source text with NO following-part context, which is how
+``display_text`` and the formatter drifted apart in the first place; use
+``Word.part_source_text`` / ``part_source_text(parts, i)``. Detected only for
+the direct form ``for p in <expr>.parts`` (and its ``enumerate``/comprehension
+spellings) — binding ``.parts`` to a local first defeats it. That limit is
+why ratchet 1 exists as well.
+
+Extend a detector if a new shape arrives — do not allowlist the module.
 """
 
 import ast
@@ -93,6 +105,95 @@ def find_brace_spellings(root: Path):
                             and id(elt) not in docstrings):
                         hits.append((rel, node.lineno, "sequence element"))
     return hits
+
+
+def _parts_loop_targets(node):
+    """Names bound by ``for X in <expr>.parts`` (incl. enumerate/tuple)."""
+    iterable = node.iter
+    if (isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Name)
+            and iterable.func.id == "enumerate" and iterable.args):
+        iterable = iterable.args[0]
+    if not (isinstance(iterable, ast.Attribute) and iterable.attr == "parts"):
+        return set()
+    target = node.target
+    elements = target.elts if isinstance(target, ast.Tuple) else [target]
+    return {e.id for e in elements if isinstance(e, ast.Name)}
+
+
+def find_raw_part_stringifications(root: Path):
+    """[(path, lineno)] for every ``str(p)`` over a name bound from ``.parts``."""
+    hits = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        try:
+            rel = path.relative_to(PROJECT_ROOT).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        for node in ast.walk(tree):
+            loops = (node,) if isinstance(node, (ast.For, ast.comprehension)) else ()
+            for loop in loops:
+                names = _parts_loop_targets(loop)
+                if not names:
+                    continue
+                body = (loop.body if isinstance(loop, ast.For)
+                        else [loop.iter, *loop.ifs])
+                for stmt in body:
+                    for call in ast.walk(stmt):
+                        if (isinstance(call, ast.Call)
+                                and isinstance(call.func, ast.Name)
+                                and call.func.id == "str"
+                                and len(call.args) == 1
+                                and isinstance(call.args[0], ast.Name)
+                                and call.args[0].id in names):
+                            hits.append((rel, call.lineno))
+    # A comprehension's element expression is not in its own body; scan the
+    # enclosing comprehension nodes for it.
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        try:
+            rel = path.relative_to(PROJECT_ROOT).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.GeneratorExp, ast.ListComp,
+                                     ast.SetComp)):
+                continue
+            names = set()
+            for gen in node.generators:
+                names |= _parts_loop_targets(gen)
+            if not names:
+                continue
+            for call in ast.walk(node.elt):
+                if (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                        and call.func.id == "str" and len(call.args) == 1
+                        and isinstance(call.args[0], ast.Name)
+                        and call.args[0].id in names):
+                    hits.append((rel, call.lineno))
+    return sorted(set(hits))
+
+
+def test_no_word_rebuild_bypasses_the_authority():
+    """Nothing under psh/ re-stringifies a word's parts by hand."""
+    hits = find_raw_part_stringifications(PROJECT_ROOT / "psh")
+    assert not hits, (
+        "rebuild the word through Word.part_source_text / "
+        "part_source_text(parts, i) instead of str(part):\n  "
+        + "\n  ".join(f"{rel}:{line}" for rel, line in hits))
+
+
+@pytest.mark.parametrize("offender", [
+    "def flat(word):\n    return ''.join(str(p) for p in word.parts)\n",
+    "def flat(word):\n"
+    "    out = []\n"
+    "    for part in word.parts:\n"
+    "        out.append(str(part))\n"
+    "    return ''.join(out)\n",
+    "def flat(word):\n"
+    "    return ''.join(str(p) for i, p in enumerate(word.parts))\n",
+])
+def test_synthetic_rebuild_offender_is_rejected(tmp_path, offender):
+    (tmp_path / "sneaky_rebuild.py").write_text(textwrap.dedent(offender))
+    assert find_raw_part_stringifications(tmp_path), "offender not caught"
 
 
 def test_only_the_owner_spells_a_variable_reference():
