@@ -11429,3 +11429,19 @@
   stdout: "o\nM\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_metachar_home
+  description: "C042 round-3 V2-B1: the multi-part tilde extent ~:$u with a metacharacter HOME - the collapse escapes the WHOLE tilde word, so the near-miss subject does not match and the exact one does"
+  env: {HOME: "/a*b"}
+  command: 'u=Z; case ''/aXb:$u'' in ~:$u) echo M;; *) echo o;; esac; case ''/a*b:$u'' in ~:$u) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_test_eq_metachar_home
+  description: "C042 round-3 V2-B1: the same collapse site through the [[ == ]] consumer"
+  env: {HOME: "/a[b]"}
+  command: 'u=Z; if [[ ''/ab:$u'' == ~:$u ]]; then echo M; else echo o; fi; if [[ ''/a[b]:$u'' == ~:$u ]]; then echo M; else echo o; fi'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
