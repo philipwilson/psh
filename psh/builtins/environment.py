@@ -9,11 +9,13 @@ from typing import TYPE_CHECKING, List, cast
 from ..core import (
     ArraySubscriptError,
     AssociativeArray,
+    FunctionDefinitionError,
     IndexedArray,
     NamerefCycleError,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
     VarAttributes,
+    special_builtin_stops_at_first_bad_identifier,
 )
 from ..core.option_registry import (
     OPTION_REGISTRY,
@@ -148,10 +150,18 @@ class ExportBuiltin(Builtin):
                 key, value = arg, None
                 append = False
 
-            # bash: invalid names are reported (rc 1) but the remaining
-            # arguments are still processed.
+            # bash 5.3: an invalid name is reported and, in POSIX mode, ENDS
+            # the operand loop — later operands are neither diagnosed nor
+            # exported, and the typed outcome exits a non-interactive posix
+            # shell (`set -o posix; export 1bad=x 2bad=y` prints ONE
+            # diagnostic and exits 1). In default mode the loop runs on and
+            # the builtin merely returns 1. The stop belongs to posix mode
+            # alone: `command export 1bad=x 2bad=y` and a guarded form also
+            # print one diagnostic.
             if not self._is_valid_identifier(key, shell.state.options.get('posix', False)):
                 self.error(f"`{arg}': not a valid identifier", shell)
+                if special_builtin_stops_at_first_bad_identifier(shell.state):
+                    raise SpecialBuiltinUsageError(1, suppressible=True)
                 status = 1
                 continue
 
@@ -609,15 +619,25 @@ class UnsetBuiltin(Builtin):
         if opts['f']:
             # Remove functions. bash: unsetting a non-existent function is a
             # silent no-op returning 0 (matches `unset -v` on a missing var).
+            # A READONLY function is refused per operand and the loop runs on
+            # (`readonly -f f g; unset -f f g` prints BOTH diagnostics); the
+            # collected failure is the typed outcome below.
+            readonly_refusal = False
             for arg in names:
-                shell.function_manager.undefine_function(arg)
-            return 0
+                if not self._undefine_function(arg, shell):
+                    readonly_refusal = True
+            return self._readonly_unset_status(readonly_refusal)
         else:
             # Remove variables. `-n` unsets the nameref itself; otherwise a
             # nameref name is resolved to its target before unsetting (bash).
             nameref_mode = opts['n']
 
             exit_code = 0
+            # bash 5.3 exits a POSIX-mode non-interactive shell when unset
+            # REFUSES a readonly variable/element/array/function, after
+            # diagnosing every operand (`readonly r=1 s=2; unset r s` prints
+            # both, then exits 1). Recorded here, raised once after the loop.
+            readonly_refusal = False
             for var in names:
                 if nameref_mode:
                     # bash: `unset -n NAME` unsets the nameref VARIABLE itself
@@ -637,8 +657,14 @@ class UnsetBuiltin(Builtin):
                         continue
                 # Check if this is an array element syntax
                 if '[' in var and var.endswith(']'):
-                    if not self._unset_array_element(var, shell):
+                    try:
+                        if not self._unset_array_element(var, shell):
+                            exit_code = 1
+                    except ReadonlyVariableError as e:
+                        self.error(
+                            f"{e.name}: cannot unset: readonly variable", shell)
                         exit_code = 1
+                        readonly_refusal = True
                 elif (not opts['v']
                       and shell.state.scope_manager.get_variable_object(var) is None
                       and var not in shell.env
@@ -648,7 +674,9 @@ class UnsetBuiltin(Builtin):
                     # name. With both present the variable wins (handled by the
                     # variable branch below, which runs when a variable exists);
                     # an explicit `-v` restricts to variables and never falls back.
-                    shell.function_manager.undefine_function(var)
+                    if not self._undefine_function(var, shell):
+                        exit_code = 1
+                        readonly_refusal = True
                 else:
                     # Regular variable unset. The scope manager's
                     # variable_changed observer re-derives the environment
@@ -664,7 +692,38 @@ class UnsetBuiltin(Builtin):
                     except ReadonlyVariableError:
                         self.error(f"{var}: cannot unset: readonly variable", shell)
                         exit_code = 1
+                        readonly_refusal = True
+            if readonly_refusal:
+                return self._readonly_unset_status(True)
             return exit_code
+
+    def _undefine_function(self, name: str, shell: 'Shell') -> bool:
+        """Remove one function; False when it is READONLY (already reported).
+
+        bash's wording is ``unset: NAME: cannot unset: readonly function``
+        (5.3.15, both modes) — the FunctionManager's own
+        ``NAME: readonly function`` text belongs to the DEFINITION refusal.
+        """
+        try:
+            shell.function_manager.undefine_function(name)
+        except FunctionDefinitionError:
+            self.error(f"{name}: cannot unset: readonly function", shell)
+            return False
+        return True
+
+    def _readonly_unset_status(self, refused: bool) -> int:
+        """Status for an unset run that refused a readonly operand.
+
+        The refusal is a special-builtin OPERAND error bash 5.3 made fatal in
+        posix mode (CHANGES, bash-5.3-alpha, "1. Changes to Bash" item jj):
+        the typed outcome exits a non-interactive posix shell and is a plain
+        rc 1 everywhere else, including through ``command``/``builtin``. It
+        is SUPPRESSIBLE — `set -o posix; readonly r=1; unset r || echo caught`
+        prints caught, rc 0.
+        """
+        if refused:
+            raise SpecialBuiltinUsageError(1, suppressible=True)
+        return 0
 
     def _unset_array_element(self, var: str, shell: 'Shell') -> bool:
         """Unset one array element (``unset 'arr[index]'``).
@@ -672,7 +731,11 @@ class UnsetBuiltin(Builtin):
         Subscript evaluation delegates to the ONE subscript authority
         (ExpansionManager.subscript — indexed arithmetic / associative key)
         rather than re-implementing them here.
-        Returns True on success, False on error (caller sets status 1).
+        Returns True on success, False on a plain operand error (the caller
+        sets status 1). A READONLY refusal raises ``ReadonlyVariableError``
+        instead, so the caller renders the one message and records the
+        special-builtin outcome bash 5.3 made fatal in posix mode — the same
+        path the whole-variable branch already takes.
         """
 
         expander_split = shell.expansion_manager.variable_expander.split_subscript(var)
@@ -706,8 +769,7 @@ class UnsetBuiltin(Builtin):
             value = getattr(var_obj, 'value', None)
             if isinstance(value, IndexedArray):
                 if var_obj is not None and var_obj.is_readonly:
-                    self.error(f"{array_name}: cannot unset: readonly variable", shell)
-                    return False
+                    raise ReadonlyVariableError(array_name)
                 for idx in list(value.indices()):
                     shell.state.scope_manager.store.unset_element(array_name, idx)
                 return True
@@ -727,8 +789,7 @@ class UnsetBuiltin(Builtin):
         # scope_manager.unset_variable, which already enforces this.
         if var_obj.is_readonly and isinstance(
                 var_obj.value, (IndexedArray, AssociativeArray)):
-            self.error(f"{array_name}: cannot unset: readonly variable", shell)
-            return False
+            raise ReadonlyVariableError(array_name)
 
         if isinstance(var_obj.value, (IndexedArray, AssociativeArray)):
             # Route through the store's element-unset transaction: it owns the
@@ -769,11 +830,8 @@ class UnsetBuiltin(Builtin):
         # Scalar variable: bash treats it as a one-element array, so
         # `unset 'x[0]'` unsets x and any other subscript is an error.
         if expander._eval_array_index(index_expr) == 0:
-            try:
-                shell.state.scope_manager.unset_variable(array_name)
-            except ReadonlyVariableError:
-                self.error(f"{array_name}: cannot unset: readonly variable", shell)
-                return False
+            # A readonly refusal propagates to the caller (see the docstring).
+            shell.state.scope_manager.unset_variable(array_name)
             return True
         self.error(f"{array_name}: not an array variable", shell)
         return False
