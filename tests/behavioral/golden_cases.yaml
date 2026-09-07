@@ -10756,8 +10756,8 @@
 - name: w0_2_trap_P_unset_prints_nothing_ignored_prints_empty_line
   description: "trap -P on an unset signal prints nothing; the ignored action prints an empty line (bash 5.3.15)"
   min_bash: "5.3"
-  command: "trap -P INT; echo rc=$?; trap '' INT; trap -P INT | od -c | head -1"
-  stdout: "rc=0\n0000000   \\n                                                            \n"
+  command: "trap -P INT; echo rc=$?; trap '' INT; trap -P INT | awk '{ print \"[\" $0 \"]\" }'"
+  stdout: "rc=0\n[]\n"
   stderr: ""
   exit_code: 0
 
