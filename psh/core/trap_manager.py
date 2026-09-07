@@ -557,9 +557,27 @@ class TrapManager:
                 #   set -o posix; trap "eval 'if'" USR1
                 #   kill -USR1 $$; sleep 0.2; echo reached
                 #     -> rc 2, `reached` never printed
-                self.shell.run_command(action, add_to_history=False,
-                                       base_line=base_line,
-                                       posix_syntax_exit=False)
+                #
+                # The action also runs behind a POSIX suppressible-exit
+                # BOUNDARY: a guard around the INTERRUPTED command does not
+                # suppress a special-builtin exit inside the action, though a
+                # guard inside the action does (bash 5.3.15):
+                #   set -o posix; trap 'set -q' DEBUG; false || echo caught
+                #     -> rc 2, `caught` never printed
+                #   set -o posix; trap 'set -q || echo in' EXIT; echo body
+                #     -> body / in, rc 0
+                # See ExecutionContext.trap_action_boundary. Without a live
+                # executor there is no suppression depth to fence off.
+                executor = getattr(self.shell, '_current_executor', None)
+                if executor is None:
+                    self.shell.run_command(action, add_to_history=False,
+                                           base_line=base_line,
+                                           posix_syntax_exit=False)
+                else:
+                    with executor.context.trap_action_boundary():
+                        self.shell.run_command(action, add_to_history=False,
+                                               base_line=base_line,
+                                               posix_syntax_exit=False)
             finally:
                 self._trap_action_depth -= 1
                 self._trap_action_frames.pop()

@@ -38,6 +38,7 @@ from .internal_errors import (
     arith_assignment_discard,
     fatal_expansion_status,
     report_internal_defect,
+    special_builtin_stops_at_first_bad_identifier,
     special_builtin_usage_discard,
     special_builtin_usage_exit,
 )
@@ -90,6 +91,7 @@ __all__ = [
     'report_internal_defect',
     'fatal_expansion_status',
     'arith_assignment_discard',
+    'special_builtin_stops_at_first_bad_identifier',
     'special_builtin_usage_discard',
     'special_builtin_usage_exit',
     # Traps

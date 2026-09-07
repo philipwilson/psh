@@ -62,14 +62,17 @@ class ExecutionContext:
     errexit_suppress_deferred: int = 0
 
     # Floor for the POSIX special-builtin SUPPRESSIBLE-exit check: the
-    # suppressible class (invalid options / top-level return) is exempt from
-    # the posix-mode exit only when errexit_suppress rose ABOVE this floor —
-    # i.e. a guard established INSIDE the current eval/dot nesting. bash's
-    # suppression reaches through functions, brace groups and subshells but
-    # NOT through an eval/dot boundary (`eval 'set -q' || x` still exits,
-    # `eval 'set -q || echo in'` survives — probe-verified,
-    # tmp/posixexit/suppress_*.txt), so the nested SourceProcessor raises
-    # the floor to the entry-time depth for the duration of the nested text.
+    # suppressible class (invalid options, top-level return, and bash 5.3's
+    # export/readonly/unset operand errors) is exempt from the posix-mode
+    # exit only when errexit_suppress rose ABOVE this floor. On bash 5.3 an
+    # OUTER guard suppresses through functions, brace groups, subshells AND
+    # through an eval/dot boundary, so those nestings leave the floor alone;
+    # a TRAP ACTION is the one boundary it does not cross, and
+    # `trap_action_boundary` raises the floor for the action's duration.
+    # Reproduce (bash 5.3.15 and psh agree on all three):
+    #   set -o posix; eval 'set -q' || echo caught   -> caught, rc 0
+    #   set -o posix; eval 'set -q || echo in'       -> in, rc 0
+    #   set -o posix; trap 'set -q' DEBUG; false || echo caught  -> rc 2
     special_exit_floor: int = 0
 
     @contextmanager
@@ -81,10 +84,30 @@ class ExecutionContext:
         finally:
             self.errexit_suppress -= 1
 
+    @contextmanager
+    def trap_action_boundary(self):
+        """Run a TRAP ACTION with the POSIX suppressible-exit floor raised.
+
+        bash runs a trap action between commands, and a guard around the
+        INTERRUPTED command does not suppress a special-builtin exit inside
+        the action: `set -o posix; trap 'set -q' DEBUG; false || echo caught`
+        exits 2 on bash 5.3.15 in all three input modes. A guard INSIDE the
+        action suppresses again (`trap 'set -q || echo in' EXIT` survives),
+        which is exactly what raising the floor to the entry-time depth
+        expresses. The one caller is core/trap_manager.py#execute_trap.
+        """
+        saved = self.special_exit_floor
+        self.special_exit_floor = self.errexit_suppress
+        try:
+            yield
+        finally:
+            self.special_exit_floor = saved
+
     @property
     def special_exit_suppressed(self) -> bool:
-        """True when a guard INSIDE the current eval/dot nesting is active
-        (the POSIX suppressible-exit exemption; see special_exit_floor)."""
+        """True when a guard reaching this command is active and no trap-action
+        boundary intervenes (the POSIX suppressible-exit exemption; see
+        special_exit_floor)."""
         return self.errexit_suppress > self.special_exit_floor
 
     def fork_context(self) -> 'ExecutionContext':
