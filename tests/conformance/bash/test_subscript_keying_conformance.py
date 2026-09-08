@@ -1107,22 +1107,24 @@ def test_divergence_lexer_splits_quoted_space_subscript():
     assert po.stdout == bo.stdout == 'declare -A a=(["key with space"]="v" )\n'
 
 
-def test_divergence_unset_nonbracket_arg_silent():
-    """2.3-discovered CARRY (unset ARG-CLASSIFICATION, outside the slot-2.3
-    builtins grant, ruled a ceremony carry row): an unset argument that
-    contains `[` but does NOT end with `]` — `unset -v 'a["]"'` — never
-    reaches the element-keying sites (split_subscript requires the trailing
-    `]`), so psh falls through to a SILENT rc-0 no-op, while bash reports
-    `unset: a["]"': not a valid identifier` (rc 1, loud) and continues.
-    Neither shell unsets anything (keys intact in both). Pre-existing and
-    base-identical at 4c319a04 (slot-2.3 ledger, m12/m13 probes); flips when
-    the unset arg-classification carry is closed."""
+def test_unset_nonbracket_arg_is_refused_like_bash():
+    """PARITY (was a divergence until the unset arg-classification carry was
+    closed): an unset argument that contains `[` but does NOT end with `]` —
+    `unset -v 'a["]"'` — is not a valid identifier, and both shells now say so
+    loudly and continue: rc 1 with ``unset: `a["]"': not a valid identifier``
+    on stderr, and neither shell unsets anything (keys intact in both).
+
+    psh used to fall through to a SILENT rc-0 no-op because the argument never
+    reached the element-keying sites (``split_subscript`` requires the trailing
+    ``]``). The identifier refusal now runs before that fall-through, so the
+    two shells agree; this row was flipped from a divergence pin to a parity
+    pin when that happened."""
     cmd = 'declare -A a; a["]"]=1; unset -v \'a["]"\'; echo rc=$?; declare -p a'
     p, b = _both(cmd)
-    assert b.stdout == 'rc=1\ndeclare -A a=(["]"]="1" )\n'   # bash: rc 1, loud
+    assert b.stdout == 'rc=1\ndeclare -A a=(["]"]="1" )\n'
     assert 'not a valid identifier' in b.stderr
-    assert p.stdout == 'rc=0\ndeclare -A a=(["]"]="1" )\n'   # psh: silent no-op
-    assert p.stderr == ''
+    assert p.stdout == b.stdout                    # parity: rc 1, keys intact
+    assert 'not a valid identifier' in p.stderr    # and loud, like bash
     assert _psh_comb(cmd).stdout == p.stdout
 
 
