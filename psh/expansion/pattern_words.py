@@ -14,12 +14,12 @@ of parameter or command expansion::
     HOME='/a*b'; case '/aXb' in ~)     echo m;; esac   # no match, ~ is literal
     HOME='/a*b'; case '/aXb' in $HOME) echo m;; esac   # m, $HOME is live
 
-Before v0.787.0 each of those sites walked the Word itself, and the ``case``
+Before v0.794.0 each of those sites walked the Word itself, and the ``case``
 walker was the one that forgot tilde expansion, so a pattern bash matched
 silently took the ``*)`` branch instead (C042)::
 
     env HOME=/h/me psh -c 'case $HOME in ~) echo tilde;; *) echo other;; esac'
-    # bash 5.3.15: tilde     psh <= v0.786.0: other
+    # bash 5.3.15: tilde     psh < v0.794.0: other
 
 :func:`expand_pattern_word` is now that single walker. The tilde PLACEMENT
 rule is not reimplemented here: it is driven through the same

@@ -4,6 +4,51 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.794.0 (2026-09-08) - Tilde expansion in pattern words (Improvement Program 2026-09, Wave 1 slot 1.11)
+- P1 WRONG BRANCH TAKEN SILENTLY (C042): a `case` pattern was never
+  tilde-expanded, so `case $HOME in ~) …` took the `*)` branch where bash takes
+  the first one. One owner now expands every pattern word —
+  `psh/expansion/pattern_words.py#expand_pattern_word`, used by `case` and by
+  the `[[ == ]]` / `[[ != ]]` / `[[ =~ ]]` right operands — driving the
+  command-word tilde placement rule rather than a copy of it.
+- What a tilde expands TO is matched LITERALLY in a pattern, as in bash, so a
+  `HOME` or `PWD` holding `*` or `[` is no longer a live pattern:
+  `HOME='/a*b'; case '/aXb' in ~)` does not match, while
+  `case '/aXb' in $HOME)` still does — bash quotes the result of tilde
+  expansion and does not quote the result of parameter expansion.
+- The literal span is the whole tilde WORD, which turns on bash having TWO
+  boundaries that are not the same. The tilde PREFIX, the part that EXPANDS,
+  ends at the first `/` **or** `:` (`TildeExpander.prefix_end`). The tilde
+  WORD, the part made LITERAL, ends at the first `/` **only**
+  (`TildeExpander.word_end`) — except in an assignment-shaped word, where `:`
+  ends it too and the remainder stays live; that exception is carried by
+  `word_expander.py#_expand_assignment_value_tildes`, which splits the value on
+  `:` before the escape ever sees it. With `HOME=/h/me`:
+  `case '/h/me:XX' in ~:*)` does not match, because the `*` is inside the word;
+  `case '/h/me:*/YY' in ~:*/*)` does, because the second `*` is past the
+  boundary; and `case 'x=/h/me:XX' in x=~:*)` does, because the word is
+  assignment-shaped so the `:` ended it.
+- Also fixed by the consolidation: the assignment-shaped value tilde in a
+  `[[ == ]]` operand (`[[ x=$HOME == x=~ ]]`), a word-leading tilde in the
+  `[[ =~ ]]` regex operand (whose docstring had claimed bash treats a leading
+  `~` as literal there — it does not), and a `$'…'` operand being run through
+  the double-quote recipe a second time (`[[ $p == $'a$b' ]]`).
+- Ledger: W1-N59 (anchored `${v/#pat/rep}` / `${v/%pat/rep}` tilde-expand in
+  psh, not in bash), W1-N60 (an EMPTY `HOME` expands `~` to the empty string in
+  bash; psh falls back to the password database), W1-N61 (after `unset HOME`
+  bash keeps the home it captured at startup, and its fallback differs between
+  the top-level shell and a command substitution), W1-N62 (the `[[ ]]` LHS
+  subject word does not get the assignment-value tilde), W1-N67 (a command-word
+  `~` expansion is glob-active in psh) and W1-N83 (`~:${u}` renders as `$u`)
+  registered, all pre-existing.
+- Verification: four adversarial rounds, each finding something real — an
+  unescaped tilde replacement that made a metacharacter `HOME` a live pattern
+  (nine cells regressed against base), two escape sites pinned by nothing, a
+  boundary rule that was right in code and wrong in prose, and a discriminating
+  example that did not discriminate. 411 pin nodes red at base and green at the
+  tip; the mutation applying the previously-stated rule uniformly reddens 50
+  nodes where it reddened none.
+
 ## 0.793.0 (2026-09-08) - noexec gates every statement; a bare substitution carries its status (Improvement Program 2026-09, Wave 1 slot 1.10)
 - P1 WRONG BEHAVIOUR (C040): `set -n` took effect only at the next input unit,
   so everything after it on the same line still RAN — `echo before; set -n;

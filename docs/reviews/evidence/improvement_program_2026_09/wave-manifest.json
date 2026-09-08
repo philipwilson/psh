@@ -148,7 +148,8 @@
         },
         {
           "id": "1.11",
-          "title": "Pattern words"
+          "title": "Pattern words",
+          "release": "0.794.0"
         },
         {
           "id": "1.12",
@@ -347,6 +348,25 @@
             "round-1 V-N3 (interactive `$-` lacks `m`) — psh prints `himBHs` at a real controlling terminal at base and tip; the `m` is there once job control is actually available"
           ],
           "verification": "r1 BOUNCE (2 blockers incl. a regression), r2 PASS at 08a1b673"
+        },
+        {
+          "version": "0.794.0",
+          "date": "2026-09-08",
+          "slots": [
+            "1.11"
+          ],
+          "closes": [
+            "C042"
+          ],
+          "registers": [
+            "W1-N59",
+            "W1-N60",
+            "W1-N61",
+            "W1-N62",
+            "W1-N67",
+            "W1-N83"
+          ],
+          "verification": "r1 BOUNCE, r2 BOUNCE, r3 BOUNCE, r4 PASS at e0791e17 (411 pins red on base)"
         }
       ]
     },
