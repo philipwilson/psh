@@ -120,7 +120,8 @@
         },
         {
           "id": "1.5",
-          "title": "PATH effective-binding observer"
+          "title": "PATH effective-binding observer",
+          "release": "0.789.0"
         },
         {
           "id": "1.6",
@@ -287,6 +288,23 @@
             "W1-N51"
           ],
           "verification": "r1 BOUNCE, r2 (tmp/program-2026-09/verify/slot-1.1*.md)"
+        },
+        {
+          "version": "0.789.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.5"
+          ],
+          "closes": [
+            "C044"
+          ],
+          "registers": [
+            "W1-N52",
+            "W1-N53",
+            "W1-N56",
+            "W1-N57"
+          ],
+          "verification": "r1 (tmp/program-2026-09/verify/slot-1.5.md)"
         }
       ]
     },
