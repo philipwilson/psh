@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.791.0 (2026-09-08) - Usage-error status family follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.3)
+- Usage-error status family follows bash 5.3 (gate rows G30–G31, ledger
+  W0-N4/N8/N9/N10/N31 / FLIP-PINS 2.3): `exit`, `shift`, `return`, `cd`,
+  `break` and `continue` report usage errors with bash 5.3.15's status 2
+  instead of 5.2's 1, from ONE owner in `psh/core/internal_errors.py`
+  (`special_builtin_usage_discard` with named entry points for the three
+  outcomes). A too-many-arguments error (`exit 7 8`, `shift 1 2`, `return 3
+  4`, `break 1 2`) discards the rest of the input line and the next line sees
+  `$?` = 2 (the shell exits 2 when nothing follows; `-c` still abandons the
+  string with 1); a non-numeric operand (`exit abc`, `shift abc`) reports and
+  CONTINUES on the same line with status 2 instead of exiting, and exits 2 in
+  POSIX mode; a bad `break abc`/`continue abc` count exits the shell with 2,
+  not 128; `cd a b` is 2; `return abc 7` reports the bad first operand rather
+  than "too many arguments", as `exit`/`shift` already did. The status-2
+  discard is contained by a command substitution (`x=$(exit 1 2); echo $?`
+  stays 1, as in bash) via a `usage_discard_channel` stamp on the abort, and
+  by a subshell as before. FLIP-PINS 2.3 rows flipped to parity pins
+  (`TestUsageStatusMatchesBash`, three modes; new helper
+  `divergence_pins.py#assert_mode_parity` asserts both agreement AND the
+  pinned value), W0-N31 pinned, golden `bcontract_*` rows flipped/strengthened
+  with `min_bash: "5.3"` (`bcontract_exit_bad_first_operand_continues_two`), plus new rows for the errexit interaction and the
+  substitution/subshell containment.
+- Numeric operands of these builtins are validated by a new
+  `psh/builtins/numeric.py#legal_number` (base-10, sign, whitespace, int64;
+  W0-N30: overflow, `5_0` and Unicode digits are `numeric argument required`
+  rc 2 instead of silently accepted); slot 1.14 routes the remaining builtins.
+- Not routed (deliberate): the psh-only `debug`/`debug-ast` builtins keep
+  their status (no bash oracle); registered as W1-N40.
+- Ledger: W1-N37 (a sourced file's diagnostics are not prefixed with the file
+  name → 4.5), W1-N38 (line numbers inside command substitution → 4.5),
+  W1-N39 (a discard raised inside the EXIT trap overwrites the shell's exit
+  status → 2.1-r) registered; W1-N34 (`return abc` under posix; from this
+  slot's probing) is owned by the 2.2 rider.
+- Verification: round 1 BOUNCE (W0-N30 open; interactive break/continue; two regressions — the fork-shape rule and the EXIT-trap status), round 2 narrow BOUNCE (one fork-shape residual: a backgrounded bare builtin bypassed the chokepoint), round 3 re-checked; reports `tmp/program-2026-09/verify/slot-2.3*.md`.
+
 ## 0.790.0 (2026-09-08) - POSIX special-builtin exits follow bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.2)
 - POSIX special-builtin exits follow bash 5.3 (CHANGES 5.3-alpha items jj and
   nnnnn; gate rows G18–G22 / FLIP-PINS 2.2): in a POSIX-mode non-interactive

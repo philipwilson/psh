@@ -502,6 +502,8 @@ CLOSURES = {
 }
 # G-id -> (release, closure note) for the Part B gate nodes.
 GATE_CLOSURES = {
+    'G30': ('v0.791.0', 'slot 2.3 (v0.791.0): `special_builtin_usage_discard` family (status 2); flipped to `TestUsageStatusMatchesBash` parity pins (three modes) + `TestCdOptions::test_cd_too_many_arguments` rc 2'),
+    'G31': ('v0.791.0', 'slot 2.3 (v0.791.0): `special_builtin_usage_discard` family (status 2); flipped to `TestUsageStatusMatchesBash` parity pins (three modes) + `TestCdOptions::test_cd_too_many_arguments` rc 2'),
     'G18': ('v0.790.0', 'slot 2.2 (v0.790.0): `special_builtin_usage_exit` / `SpecialBuiltinUsageError(1, suppressible=True)`; flipped to `TestPosixSpecialBuiltinExitParity` (three modes), golden `posixexit_*_exits`'),
     'G19': ('v0.790.0', 'slot 2.2 (v0.790.0): `special_builtin_usage_exit` / `SpecialBuiltinUsageError(1, suppressible=True)`; flipped to `TestPosixSpecialBuiltinExitParity` (three modes), golden `posixexit_*_exits`'),
     'G20': ('v0.790.0', 'slot 2.2 (v0.790.0): `special_builtin_usage_exit` / `SpecialBuiltinUsageError(1, suppressible=True)`; flipped to `TestPosixSpecialBuiltinExitParity` (three modes), golden `posixexit_*_exits`'),
