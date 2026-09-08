@@ -861,9 +861,19 @@ def test_four_subject_separation(pattern, lit, tmp_path):
     """Four subjects per pattern, because `o` alone proves nothing.
 
     A shell that never tilde-expanded also answers `o` to
-    `case '/h/me:XX' in ~:*)`. Only the M/o/o/o row separates "expanded, then
-    the whole word made literal" from "never expanded" (column 1) and from
-    "expanded but the metacharacter left live" (columns 3 and 4).
+    `case '/h/me:XX' in ~:*)`. Only the whole M/o/o/o ROW identifies "expanded,
+    then the whole word made literal" — and WHICH cell does the separating is
+    pattern dependent, which is why every row is asserted rather than one cell.
+    Measured against the two psh tips that embody the rival hypotheses
+    (`b6ec6f95` never expanded; `f712bc1e` expanded but left the metacharacter
+    live):
+
+        ~:*    correct M/o/o/o   left-live M/M/o/o   never-expanded o/o/M/M
+        ~:[a]  correct M/o/o/o   left-live o/o/o/o   never-expanded o/o/o/o
+        ~:?    correct M/o/o/o   left-live M/o/o/o (indistinguishable here)
+
+    So at `~:*` it is column 2 that kills "left live"; at `~:[a]` column 1 does;
+    at `~:?` the pattern pins only the never-expanded direction.
     """
     env = {"HOME": "/h/me"}
     subjects = [f"/h/me:{lit}", "/h/me:XX", f"~:{lit}", "~:XX"]

@@ -338,11 +338,12 @@ class TestTildeWordBoundaryIsLiteral:
         """Four subjects, because ``o`` alone proves nothing.
 
         A shell that never expanded the tilde ALSO answers ``o`` to
-        ``case '/h/me:XX' in ~:*)``. Only the full row separates "expanded,
-        then the whole word made literal" from "never expanded" and from
-        "expanded but the metacharacter left live". bash 5.3.15 gives
-        M / o / o / o for every pattern here, and the pattern STRING the owner
-        produces is what makes that row come out.
+        ``case '/h/me:XX' in ~:*)``. Only the whole row identifies "expanded,
+        then the whole word made literal", and which CELL separates which rival
+        is pattern dependent — see ``TildeExpander.word_end`` for the measured
+        table. bash 5.3.15 gives M / o / o / o for every pattern here, and the
+        pattern STRING the owner produces is what makes that row come out, so
+        all four cells are asserted.
         """
         from psh.expansion.pattern import match_shell_pattern
         produced = pat(pattern)

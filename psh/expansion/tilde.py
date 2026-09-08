@@ -60,17 +60,26 @@ class TildeExpander:
 
         Proving the rule needs FOUR subjects per pattern, not two: ``o`` alone
         is also what a shell that never expanded the tilde would print, so only
-        the full row separates the hypotheses. bash 5.3.15, ``HOME=/h/me``::
+        the full ROW identifies the behaviour. Measured against bash 5.3.15 and
+        against psh at the two tips that embody the rival hypotheses —
+        ``b6ec6f95`` never expanded a ``case`` pattern's tilde, and
+        ``f712bc1e`` expanded it but left the metacharacter live::
 
-            pattern   '/h/me:*'   '/h/me:XX'   '~:*'   '~:XX'
-            ~:*         M            o           o       o
-            ~:?         M(1)         o           o       o
-            ~:[a]       M(2)         o           o       o
-            (1) subject '/h/me:?'   (2) subject '/h/me:[a]'
+            pattern  hypothesis            '/h/me:LIT'  '/h/me:XX'  '~:LIT'  '~:XX'
+            ~:*      correct (and bash)         M           o          o        o
+            ~:*      expanded, left live        M           M          o        o
+            ~:*      never expanded             o           o          M        M
+            ~:[a]    correct (and bash)         M           o          o        o
+            ~:[a]    expanded, left live        o           o          o        o
+            (LIT is the pattern's own remainder text: '*', '?', '[a]'.)
 
-        Only "expanded, then the whole tilde word made literal" gives that row:
-        column 1 rules out "never expanded", columns 3-4 rule out "expanded but
-        the metacharacter left live".
+        WHICH cell does the separating is pattern dependent, which is why the
+        pin carries the whole row rather than one cell. At ``~:*`` column 2
+        kills "expanded, left live" and columns 1/3/4 kill "never expanded"; at
+        ``~:[a]`` the live hypothesis collapses to all-``o`` so column 1 is what
+        separates it; at ``~:?`` the live hypothesis is indistinguishable from
+        correct (``?`` matches one character and ``XX`` is two), so that pattern
+        pins only the never-expanded direction.
 
         The ``/`` boundary is one-sided, and the assignment exception flips the
         ``:`` one::
