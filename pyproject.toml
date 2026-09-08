@@ -246,6 +246,9 @@ module = [
     "psh.executor.null_command",
     # --- joined in Improvement Program 2026-09 slot 1.11 (C042).
     "psh.expansion.pattern_words",
+    # --- joined in Improvement Program 2026-09 slot 1.12 (C022): the fd-0
+    # binding, born fully typed.
+    "psh.core.stdin_binding",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

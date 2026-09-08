@@ -85,7 +85,8 @@ class SubshellExecutor:
         # Foreground: apply redirections and execute in current environment.
         # A bad redirect target prints bash's diagnostic and yields False,
         # so the body does not run — status 1, `|| fallback` runs.
-        with self.io_manager.guarded_redirections(node.redirects) as applied:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=True) as applied:
             if not applied:
                 return 1
             return visitor.visit(node.statements)
@@ -145,7 +146,7 @@ class SubshellExecutor:
             def body(sub) -> int:
                 if redirects:
                     try:
-                        sub.io_manager.apply_redirections(redirects)
+                        sub.io_manager.apply_compound_redirections(redirects)
                     except OSError as e:
                         os.write(2, (format_redirect_error(
                             e, location=sub.state.error_location_prefix())
@@ -278,7 +279,8 @@ class SubshellExecutor:
                 saved_fds = []
                 try:
                     if redirects:
-                        saved_fds = subshell.io_manager.apply_redirections(redirects)
+                        saved_fds = (subshell.io_manager
+                                     .apply_compound_redirections(redirects))
                 except OSError as e:
                     os.write(2, (format_redirect_error(
                         e, location=subshell.state.error_location_prefix())
@@ -288,7 +290,8 @@ class SubshellExecutor:
                     return subshell.execute_command_list(statements)
                 finally:
                     if saved_fds:
-                        subshell.io_manager.restore_redirections(saved_fds)
+                        subshell.io_manager.restore_compound_redirections(
+                            saved_fds, redirects)
 
             exit_code = run_background_shell_child(subshell, body)
 
@@ -345,7 +348,8 @@ class SubshellExecutor:
                 saved_fds = []
                 try:
                     if node.redirects:
-                        saved_fds = self.io_manager.apply_redirections(node.redirects)
+                        saved_fds = self.io_manager.apply_compound_redirections(
+                            node.redirects)
                 except OSError as e:
                     os.write(2, (format_redirect_error(
                         e, location=self.state.error_location_prefix())
@@ -355,7 +359,8 @@ class SubshellExecutor:
                     return visitor.visit(node.statements)
                 finally:
                     if saved_fds:
-                        self.io_manager.restore_redirections(saved_fds)
+                        self.io_manager.restore_compound_redirections(
+                            saved_fds, node.redirects)
 
             return run_background_shell_child(self.shell, body)
 

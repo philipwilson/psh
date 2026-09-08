@@ -4,6 +4,64 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.795.0 (2026-09-08) - A background command reads the input its frame was given (Improvement Program 2026-09, Wave 1 slot 1.12)
+- P1 SILENT DATA LOSS (C022): a command backgrounded inside a pipeline member or
+  a redirected compound was given `/dev/null` as stdin instead of the input its
+  frame had been handed, so `echo hello | { cat & wait; }` printed nothing and
+  `{ cat & wait; } < file` read nothing. Both now deliver, as does the same
+  shape under `( )`, `if`/`for`/`while`/`until`/`case` redirects, here-strings,
+  heredocs, process substitutions and a function's definition-attached
+  redirect. The POSIX default still applies exactly where bash applies it — a
+  top-level `cat & wait`, `exec < file; cat & wait`, and a function CALL's own
+  `f < file`, which in bash gives the body nothing.
+- One owner answers "is fd 0 the shell's own stdin right now":
+  `psh/core/stdin_binding.py#StdinBinding` (in `core`, because the
+  import-layering guard bars `core -> io_redirect`; the io layer is its
+  reporter). The reporters are the compound-redirection window and the pipeline
+  redirection setup — `guarded_redirections` now takes a REQUIRED `compound:`
+  keyword at all nine call sites so a tenth cannot forget — and the sole reader
+  is `AsyncJobPolicy.for_launch`. A static guard fails if a second fd-0 origin
+  test (`isatty(0)`, `S_ISFIFO`, `fstat(0)`) appears anywhere in the three
+  packages.
+- The classifier answers on DIRECTION as well as fd: an output redirect landing
+  on fd 0 does not supply a frame's input. Without that, `{ cat & wait; } 0>&1`
+  with stdout on a terminal hung forever; the redirect-plan default-fd rule is
+  now one function (`target_fd_of`) shared by the classifier and the eight
+  applicator sites that each carried a copy.
+- Declared divergence W1-N80, pinned on both sides and documented in the user
+  guide: bash tracks this fact in a single global cleared per top-level command,
+  so it FORGETS an inherited fd-0 binding in nested frames — psh scopes it per
+  frame. Eight faces are enumerated with the direction psh differs in each;
+  where psh withholds, the bytes remain on the shell's own stdin and its next
+  read still finds them. In stdin mode bash's background reader can consume the
+  SCRIPT itself (`printf '{ cat & wait; } 3< f\necho END\n' | bash` prints the
+  text `echo END` unexecuted, where psh runs it). The matched controls that
+  show bash's delivery flips on constructs unrelated to the frame's fd 0 ship
+  as eleven two-sided rows, so the justification fails loudly if either shell
+  changes.
+- Integration note (merge-time, not slot work): slots 1.10 and 1.12 had each
+  extracted the default-fd rule independently — `planner.py#redirect_target_fd`
+  and `redirect_program.py#target_fd_of`, with byte-identical bodies. Shipping
+  both would have re-created exactly the duplicate-implementation defect this
+  program removes, so the merge keeps ONE (`target_fd_of`, the rule eight
+  applicator sites already read) and re-points the null-command owner, its
+  pins and the executor doc at it. The required `compound:` keyword then caught
+  the second half of the interaction at type-check time: the null-command
+  redirect window had to declare itself a simple command, not a compound
+  region, or a background reader inside it would have inherited the wrong
+  fd-0 answer.
+  Slot 1.10's mutation-lock guard then caught the third consequence: its arm
+  anchors quote the exact source text, and that text moved, so the anchor was
+  REPAIRED to the merged form rather than deleted — which is what its own
+  failure message demands.
+- Ledger: W1-N81 (`select` consumes the whole of fd 0) and W1-N84 (`0>| o` /
+  `2>| e` are psh parse errors) registered, both pre-existing.
+- Verification: adversarial round 1 BOUNCE (the `0>&1` hang — a regression
+  against base, and worse than the defect being fixed — plus a seventh
+  unenumerated face), round 2 PASS with five nits, all closed. 87 pin nodes red
+  at base; the pinned artifact argument matches the verifier's independent
+  measurements row for row.
+
 ## 0.794.0 (2026-09-08) - Tilde expansion in pattern words (Improvement Program 2026-09, Wave 1 slot 1.11)
 - P1 WRONG BRANCH TAKEN SILENTLY (C042): a `case` pattern was never
   tilde-expanded, so `case $HOME in ~) …` took the `*)` branch where bash takes

@@ -9,31 +9,17 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ..ast_nodes import Redirect
 from .process_sub import ProcessSubstitutionResource
-from .redirect_program import RedirectOp, RedirectProgram, classify_redirect
+from .redirect_program import (
+    RedirectOp,
+    RedirectProgram,
+    classify_redirect,
+    target_fd_of,
+)
 
 if TYPE_CHECKING:
     from ..ast_nodes import ProcessSubstitution
     from .file_redirect import FileRedirector
     from .process_sub import ProcessSubstitutionHandler
-
-
-def redirect_target_fd(redirect: Redirect) -> int:
-    """Which file descriptor this redirection targets.
-
-    The ONE classification of "what fd does `[n]<word` touch": an explicit
-    ``redirect.fd`` wins, ``&>``/``&>>`` always start at 1, and an omitted
-    ``n`` defaults to 0 for the input operators and 1 for the output ones.
-    Both the plan below and the null-command status rule
-    (``executor/null_command.py``) read it, so `$(exit 5) 0> f` -> 0 and
-    `$(exit 5) > f` -> 1 can never disagree between them.
-    """
-    if redirect.combined:
-        return 1
-    if redirect.type in ('<<', '<<-', '<<<'):
-        return redirect.fd if redirect.fd is not None else 0
-    if redirect.fd is not None:
-        return redirect.fd
-    return 0 if redirect.type.startswith('<') else 1
 
 
 @dataclass
@@ -52,7 +38,9 @@ class RedirectPlan:
 
     @property
     def target_fd(self) -> int:
-        return redirect_target_fd(self.redirect)
+        """The fd this plan re-points — the shared rule in
+        ``redirect_program.py#target_fd_of``."""
+        return target_fd_of(self.redirect)
 
     @property
     def open_target(self) -> str:

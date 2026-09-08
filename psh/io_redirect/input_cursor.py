@@ -58,6 +58,7 @@ reach another source or be lost. See
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
 
 from ..builtins.input_reader import make_reader
+from .redirect_program import target_fd_of
 
 if TYPE_CHECKING:
     from ..ast_nodes import Redirect
@@ -91,10 +92,7 @@ def dup_alias_fds(redirect: 'Redirect') -> Optional[Tuple[int, int]]:
         if target_text is None or not str(target_text).isdigit():
             return None
         source = int(target_text)
-    target = redirect.fd
-    if target is None:
-        target = 0 if redirect.type.startswith('<') else 1
-    return target, source
+    return target_fd_of(redirect), source
 
 
 class OpenDescription:

@@ -17,7 +17,12 @@ from ..ast_nodes import (
 )
 from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
-from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
+from .redirect_program import (
+    RedirectOp,
+    RedirectOpKind,
+    is_self_dup,
+    target_fd_of,
+)
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -428,7 +433,7 @@ class FileRedirector:
         Honors an explicit source fd — ``exec 5<file`` must open fd 5,
         not clobber stdin. Returns the target fd.
         """
-        target_fd = redirect.fd if redirect.fd is not None else 0
+        target_fd = target_fd_of(redirect)
         fd = os.open(target, REDIRECT_OPEN_FLAGS['<'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
@@ -483,7 +488,7 @@ class FileRedirector:
     @staticmethod
     def _heredoc_fd(redirect) -> int:
         """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
-        return redirect.fd if redirect.fd is not None else 0
+        return target_fd_of(redirect)
 
     def redirect_heredoc(self, redirect: 'HeredocRedirect'):
         """Point the redirect's fd (default stdin) at the heredoc content.
@@ -563,7 +568,7 @@ class FileRedirector:
 
     def _redirect_output_to_file(self, target, redirect):
         """Open file for output and dup2 to target fd. Returns target_fd."""
-        target_fd = redirect.fd if redirect.fd is not None else 1
+        target_fd = target_fd_of(redirect)
         if redirect.type == '>':
             self.check_noclobber(target)
         fd = os.open(target, REDIRECT_OPEN_FLAGS[redirect.type], 0o644)
@@ -765,14 +770,14 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         """
-        target_fd = redirect.fd if redirect.fd is not None else 0
+        target_fd = target_fd_of(redirect)
         fd = os.open(target, REDIRECT_OPEN_FLAGS['<>'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
     def _redirect_clobber(self, target, redirect):
         """Force overwrite (>|), ignoring noclobber."""
-        target_fd = redirect.fd if redirect.fd is not None else 1
+        target_fd = target_fd_of(redirect)
         fd = os.open(target, REDIRECT_OPEN_FLAGS['>|'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
@@ -1218,8 +1223,7 @@ class FileRedirector:
         if redirect.combined:
             return {1, 2}
         if redirect.type in ('>&-', '<&-'):
-            default = 1 if redirect.type == '>&-' else 0
-            return {redirect.fd if redirect.fd is not None else default}
+            return {target_fd_of(redirect)}
         claimed = {plan.target_fd}
         if (redirect.type in ('>&', '<&') and redirect.move
                 and redirect.dup_fd is not None):

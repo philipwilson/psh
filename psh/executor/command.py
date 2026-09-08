@@ -371,7 +371,8 @@ class CommandExecutor:
                 # executor): first-failure stop + discard the current command.
                 arith_assignment_discard(self.state)
         if node.redirects:
-            with self.io_manager.guarded_redirections(node.redirects) as ok:
+            with self.io_manager.guarded_redirections(
+                    node.redirects, compound=False) as ok:
                 if not ok:
                     return 1
         return null_command_status(self.state, node.redirects)
@@ -410,7 +411,11 @@ class CommandExecutor:
             if node.redirects:
                 # A setup failure (`> ""`, `> adir`, `< missing`) prints the
                 # one diagnostic shape and fails with 1, like bash.
-                with self.io_manager.guarded_redirections(node.redirects) as ok:
+                # compound=False: a null command is a SIMPLE command whose
+                # words vanished, not a compound region, so its fd-0 binding
+                # must not be reported as one to a background reader.
+                with self.io_manager.guarded_redirections(
+                        node.redirects, compound=False) as ok:
                     if not ok:
                         return 1
             return null_command_status(self.state, node.redirects)
@@ -936,7 +941,8 @@ class CommandExecutor:
         # `psh: TARGET: STRERROR` message shape and fails with status 1,
         # instead of leaking the raw Python OSError repr — the same policy
         # as the builtin, external, and compound dispatch sites.
-        with self.io_manager.guarded_redirections(node.redirects) as ok:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=False) as ok:
             if not ok:
                 return ExecutionResult(status=1,
                                        prefix_assignments_persist=persist)

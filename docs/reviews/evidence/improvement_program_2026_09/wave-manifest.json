@@ -153,7 +153,8 @@
         },
         {
           "id": "1.12",
-          "title": "Async stdin"
+          "title": "Async stdin",
+          "release": "0.795.0"
         },
         {
           "id": "1.13",
@@ -367,6 +368,22 @@
             "W1-N83"
           ],
           "verification": "r1 BOUNCE, r2 BOUNCE, r3 BOUNCE, r4 PASS at e0791e17 (411 pins red on base)"
+        },
+        {
+          "version": "0.795.0",
+          "date": "2026-09-08",
+          "slots": [
+            "1.12"
+          ],
+          "closes": [
+            "C022"
+          ],
+          "registers": [
+            "W1-N80 (declared)",
+            "W1-N81",
+            "W1-N84"
+          ],
+          "verification": "r1 BOUNCE (hang regression + 7th face), r2 PASS at be580abe"
         }
       ]
     },

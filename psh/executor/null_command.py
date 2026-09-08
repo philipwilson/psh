@@ -31,7 +31,7 @@ Repro for the rule this module exists to enforce (C041):
 """
 from typing import TYPE_CHECKING, List
 
-from ..io_redirect.planner import redirect_target_fd
+from ..io_redirect.redirect_program import target_fd_of
 
 if TYPE_CHECKING:
     from ..ast_nodes import Redirect
@@ -47,7 +47,7 @@ def null_command_redirects_stdin(redirects: List['Redirect']) -> bool:
     for redirect in redirects:
         if redirect.var_fd is not None:
             return True
-        if redirect_target_fd(redirect) == 0:
+        if target_fd_of(redirect) == 0:
             return True
     return False
 

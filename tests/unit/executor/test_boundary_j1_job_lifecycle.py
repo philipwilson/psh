@@ -33,12 +33,15 @@ def _stopped(sig: int = signal.SIGSTOP) -> int:
 # ---- AsyncJobPolicy: the pure async decision (H11) --------------------------
 
 def test_async_policy_active_only_for_bg_with_job_control_off():
-    assert AsyncJobPolicy.for_launch(background=True, job_control_off=True) == \
+    assert AsyncJobPolicy.for_launch(
+        background=True, job_control_off=True, stdin_is_shell_own=True) == \
         AsyncJobPolicy(ignore_int_quit=True, redirect_stdin_from_devnull=True)
     # any other combination is inactive
-    assert AsyncJobPolicy.for_launch(background=False, job_control_off=True) == \
+    assert AsyncJobPolicy.for_launch(
+        background=False, job_control_off=True, stdin_is_shell_own=True) == \
         AsyncJobPolicy.INACTIVE
-    assert AsyncJobPolicy.for_launch(background=True, job_control_off=False) == \
+    assert AsyncJobPolicy.for_launch(
+        background=True, job_control_off=False, stdin_is_shell_own=True) == \
         AsyncJobPolicy.INACTIVE
     assert AsyncJobPolicy.INACTIVE.ignore_int_quit is False
     assert AsyncJobPolicy.INACTIVE.redirect_stdin_from_devnull is False
@@ -50,7 +53,8 @@ def test_async_policy_stdin_is_single_only_but_signal_is_every_member():
     a standalone command. Verified via the config-shaped predicates the
     launcher applies (apply() itself sets real signal handlers, so it is
     exercised by the subprocess behavioral pins, not in-process)."""
-    policy = AsyncJobPolicy.for_launch(background=True, job_control_off=True)
+    policy = AsyncJobPolicy.for_launch(
+        background=True, job_control_off=True, stdin_is_shell_own=True)
     # stdin redirect: SINGLE yes, pipeline members no
     def wants_devnull(role):
         return policy.redirect_stdin_from_devnull and role is ProcessRole.SINGLE

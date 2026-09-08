@@ -352,6 +352,9 @@ POST_ENDPOINT_MIGRATED: list = [
     "psh.executor.null_command",
     # slot 1.11 (C042): the one pattern-word walker, born fully typed.
     "psh.expansion.pattern_words",
+    # slot 1.12 (C022): the fd-0 binding — one small owner class, born fully
+    # typed for the same reason.
+    "psh.core.stdin_binding",
 ]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline
