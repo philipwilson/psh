@@ -321,7 +321,8 @@
         },
         {
           "id": "2.2",
-          "title": "POSIX special-builtin exits + eval/dot boundary"
+          "title": "POSIX special-builtin exits + eval/dot boundary",
+          "release": "0.790.0"
         },
         {
           "id": "2.3",
@@ -376,6 +377,32 @@
             "W1-N47"
           ],
           "verification": "r1 BOUNCE (2 pin gaps), r2 PASS at the rebased tip 62ed943e (tmp/program-2026-09/verify/slot-2.4*.md)"
+        },
+        {
+          "version": "0.790.0",
+          "date": "2026-09-08",
+          "slots": [
+            "2.2"
+          ],
+          "closes": [
+            "G18",
+            "G19",
+            "G20",
+            "G21",
+            "G22",
+            "W0-N25",
+            "W0-N32"
+          ],
+          "flips": "FLIP-PINS 2.2 rows",
+          "registers": [
+            "W1-N34",
+            "W1-N36",
+            "W1-N42",
+            "W1-N43",
+            "W1-N64 (declared)",
+            "W1-N65"
+          ],
+          "verification": "r1 (tmp/program-2026-09/verify/slot-2.2.md)"
         }
       ]
     },
