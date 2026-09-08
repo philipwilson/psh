@@ -253,6 +253,19 @@ PTY_REGISTRY = {
         "tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py. "
         "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
         "differential harness owning oracle resolution and typed outcomes.",
+    "system/interactive/test_noexec_interactive_pty.py":
+        "owner=slot1.10 (C040). PTY bash-DIFFERENTIAL: drives psh AND the "
+        "resolved bash oracle through pexpect.spawn over a pseudo-terminal "
+        "(TERM=dumb) and compares whether each shell honours a runtime "
+        "`set -n`. The TERMINAL is the subject and cannot be replaced: bash "
+        "REFUSES to turn noexec on only when it is interactive, and `-i -c` / "
+        "piped stdin are different `interactive` worlds from a shell reading a "
+        "terminal — the non-interactive matrix answers the opposite way by "
+        "construction, so a non-PTY pin for this row would be green-on-base. "
+        "The complementary non-interactive rows are pinned in "
+        "tests/conformance/bash/test_noexec_per_statement_conformance.py. "
+        "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
+        "differential harness owning oracle resolution and typed outcomes.",
 }
 _EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
 
@@ -283,6 +296,7 @@ _EXPECTED_PTY_SITES = {
     "system/interactive/test_substitution_abort_interactive_pty.py": 2,  # psh + bash
     "system/interactive/test_heredoc_detection_interactive_pty.py": 2,   # psh + bash
     "system/interactive/test_usage_status_interactive_pty.py": 2,        # psh + bash
+    "system/interactive/test_noexec_interactive_pty.py": 2,              # psh + bash
 }
 
 

@@ -11,6 +11,7 @@ import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..ast_nodes import SimpleCommand
+from .child_policy import leave_interactive_session
 from .foreground_session import ForegroundJobSession
 from .process_launcher import ProcessConfig, ProcessRole
 
@@ -224,6 +225,16 @@ class PipelineExecutor:
                     for execution.
                     """
                     def execute_fn():
+                        # A BACKGROUNDED pipeline is an async compound: bash
+                        # runs the whole thing through the same subshell path
+                        # as `( … ) &`, so it leaves the interactive session
+                        # and a runtime `set -n` inside a member is honoured
+                        # (`{ set -n; touch a; } | cat &` creates nothing at an
+                        # interactive prompt). A FOREGROUND member does not —
+                        # `echo x | { set -n; touch a; }` creates the file.
+                        if is_background:
+                            leave_interactive_session(self.state)
+
                         # Create this member's context. Each pipeline component
                         # runs in its OWN subshell process, so a break/continue
                         # here can never escape into the parent's loop — the

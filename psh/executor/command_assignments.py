@@ -26,9 +26,11 @@ POSIX ordering contract (probe-verified against bash 5.2):
    persistence applies is the *dispatcher's* knowledge: CommandExecutor
    decides whether to call :meth:`restore` (or :meth:`commit`), and the
    saved-state value passes through it opaquely.
-4. **A pure assignment's status is 0 unless a command substitution ran**
-   while expanding words — then it is that substitution's status
-   (``x=$(false)`` → 1, but ``x=$(false) true`` → 0). The clear of
+4. **A pure assignment reports the NULL-COMMAND status** — it runs no
+   program, so it shares the one rule in `null_command.py`: 0 unless a
+   command substitution ran while expanding words, then that substitution's
+   status (``x=$(false)`` → 1, but ``x=$(false) true`` → 0), and 0 again if
+   a redirection targeted fd 0 (``x=$(false) < f`` → 0). The clear of
    ``state.last_cmdsub_status`` stays in CommandExecutor, BEFORE
    command-word expansion, because the determining substitution can run
    while expanding command words that then vanish: ``V=v $(false)``
@@ -57,6 +59,7 @@ from ..core import (
 from ..core.options import xtrace_quote
 from ..expansion.arithmetic import ShellArithmeticError
 from .command_resolution import EMPTY_OVERLAY, CommandEnvOverlay
+from .null_command import null_command_status
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -313,10 +316,13 @@ class CommandAssignments:
         Takes raw (var, value, word) triples: each value is expanded just
         before it is applied so `A=1 B=$A` gives B the new value of A.
 
-        The exit status is 0, unless a command substitution ran while
-        expanding the values — then it is the substitution's status (the
-        caller cleared ``state.last_cmdsub_status`` before any expansion;
-        see the module docstring for why the clear lives there).
+        The exit status is the shared null-command status
+        (:mod:`psh.executor.null_command`): 0, unless a command substitution
+        ran while expanding the values — then it is the substitution's status
+        (the caller cleared ``state.last_cmdsub_status`` before any expansion;
+        see the module docstring for why the clear lives there) — and 0 again
+        whenever a redirection targeted fd 0, which bash performs in a forked
+        child (``x=$(exit 5)`` -> 5, ``x=$(exit 5) < f`` -> 0).
 
         bash order (probe-verified): the assignments are performed FIRST,
         using the original file descriptors — ``x=$(cat) < file`` reads the
@@ -391,12 +397,11 @@ class CommandAssignments:
                 if not ok:
                     return 1
 
-        # bash: a pure assignment's status is 0, unless a command
-        # substitution ran while expanding the value — then it is the
-        # substitution's status (cleared/recorded around expansion).
-        if self.state.last_cmdsub_status is not None:
-            return self.state.last_cmdsub_status
-        return 0
+        # An assignment-only command runs no program, so its status is the
+        # ONE null-command status (psh/executor/null_command.py): the last
+        # command substitution run while expanding it, unless a redirection
+        # targeted fd 0 — `x=$(exit 5)` -> 5, but `x=$(exit 5) < f` -> 0.
+        return null_command_status(self.state, node.redirects)
 
     # ------------------------------------------------------------------
     # Prefix assignments (FOO=bar cmd)

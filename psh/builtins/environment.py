@@ -34,14 +34,38 @@ if TYPE_CHECKING:
     from .function_support import DeclareBuiltin
 
 
-def apply_set_o_option(shell: 'Shell', option: str, enable: bool) -> None:
+def apply_set_o_option(shell: 'Shell', option: str, enable: bool, *,
+                       from_invocation: bool = False) -> None:
     """Apply one VALIDATED long-option toggle with its couplings.
 
-    The single toggle engine behind ``set -o/+o NAME`` and
-    ``shopt -so/-uo NAME`` (bash keeps the two surfaces exactly equivalent).
+    The single toggle engine behind ``set -n``/``set -o/+o NAME`` and
+    ``shopt -so/-uo NAME`` (bash keeps the surfaces exactly equivalent).
     ``option`` must already be a real key of ``shell.state.options``; the
     callers own name resolution and their differing unknown-name errors.
+
+    ``from_invocation`` marks the ONE caller that replays the command line
+    (``Shell._apply_invocation``). bash parses invocation flags before it
+    decides the shell is interactive, so ``bash -i -n`` really does execute
+    nothing, while the same option asked for at a prompt is refused.
     """
+    # bash REFUSES to turn noexec on when the shell belongs to a session the
+    # user is typing at: `set -n`, `set -o noexec` and `shopt -so noexec` all
+    # succeed silently and leave the option OFF, so `$-` never grows an `n`
+    # and `set -o` still reports `noexec off` (probed at a pty, bash 5.3.15).
+    # Refusing here rather than ignoring the flag downstream is what keeps
+    # those two readouts honest — and it is why the executor's noexec gate
+    # never has to ask about interactivity (C040).
+    #
+    # The predicate is `interactive_session`, NOT `interactive`: the latter is
+    # recomputed by every child shell from its own stdin, so a command
+    # substitution of an interactive shell reports False and `x=$(set -n; echo
+    # hi)` silently yielded the empty string where bash yields `hi`. The
+    # session fact is inherited across forks and dropped only where bash
+    # detaches a child (executor/child_policy.py#leave_interactive_session).
+    if (option == 'noexec' and enable and not from_invocation
+            and shell.state.options.get('interactive_session')):
+        return
+
     # Editor modes (silent, like bash): vi/emacs couple to edit_mode.
     if option in ('vi', 'emacs'):
         if enable:
@@ -447,7 +471,11 @@ class SetBuiltin(Builtin):
                         elif enable:
                             self._show_all_options(shell)
                     elif opt_char in short_to_long:
-                        shell.state.options[short_to_long[opt_char]] = enable
+                        # Through the SAME toggle engine as `-o NAME`, so a
+                        # short flag can never bypass a long option's rule
+                        # (bash keeps `set -n` and `set -o noexec` identical).
+                        apply_set_o_option(
+                            shell, short_to_long[opt_char], enable)
                     else:
                         # Usage error of a POSIX special builtin: report,
                         # then raise the typed outcome — in POSIX mode a

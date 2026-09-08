@@ -241,6 +241,9 @@ module = [
     # the pinned scope endpoint, written fully annotated, so it joins the
     # discipline from its first def rather than being noticed later.
     "psh.builtins.numeric",
+    # --- joined by Improvement Program 2026-09 slot 1.10 (C041): the
+    # null-command status rule, fully annotated from its first commit.
+    "psh.executor.null_command",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

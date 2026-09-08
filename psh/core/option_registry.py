@@ -131,6 +131,16 @@ _SPECS = [
                 "for subsequently-parsed commands"),
     # Set by the shell itself; shown in $- but not user-toggled by name.
     _spec("interactive", False, OptionCategory.INTERNAL, dollar_dash="i"),
+    # Whether this process belongs to a session the user is TYPING at. Unlike
+    # `interactive` — which every child shell RECOMPUTES from its own stdin,
+    # so a command-substitution child (whose stdin psh protects) reports
+    # False — this is established once by the top-level shell and INHERITED
+    # across every fork, and is dropped only where bash detaches a child from
+    # the session (an asynchronous COMPOUND command; see
+    # executor/child_policy.py#leave_interactive_session). It has no `$-`
+    # letter and no `set -o` spelling because bash exposes no such flag: its
+    # sole reader is the `set -n` refusal in builtins/environment.py.
+    _spec("interactive_session", False, OptionCategory.INTERNAL),
     _spec("stdin_mode", True, OptionCategory.INTERNAL, dollar_dash="s"),
     _spec("command_mode", False, OptionCategory.INTERNAL, dollar_dash="c"),
 ]
