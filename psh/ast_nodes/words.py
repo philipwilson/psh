@@ -9,7 +9,7 @@ context. The expansion nodes (``$var``, ``${...}``, ``$(...)``, ``$((...))``,
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
 
 from .base import ASTNode
 
@@ -331,13 +331,16 @@ def next_rendered_part(parts: List[WordPart],
 
     Returns ``(None, separated)`` when nothing after ``index`` prints.
     """
-    separated = bool(getattr(parts[index], 'quoted', False))
+    # `quoted` is declared on BOTH concrete part classes; the abstract
+    # ``WordPart`` base is the only reason the annotation looks wider, so the
+    # cast states that rather than a defensive read inventing a default.
+    separated = bool(cast(_QuotedPart, parts[index]).quoted)
     for j in range(index + 1, len(parts)):
         nxt = parts[j]
         if isinstance(nxt, LiteralPart) and not nxt.text:
             separated = True
             continue
-        return nxt, separated or bool(getattr(nxt, 'quoted', False))
+        return nxt, separated or bool(cast(_QuotedPart, nxt).quoted)
     return None, separated
 
 
@@ -368,6 +371,12 @@ def _fuses_with(next_part: Optional[WordPart], separated: bool) -> bool:
         return False
     lead = next_part.text[0]
     return lead.isalnum() or lead == '_' or (separated and lead == '{')
+
+
+#: The only concrete ``WordPart`` subclasses. Both declare ``quoted`` /
+#: ``quote_char``; the abstract base does not, so code that reads a quote
+#: context narrows to this rather than guarding with ``getattr``.
+_QuotedPart = Union[LiteralPart, ExpansionPart]
 
 
 @dataclass

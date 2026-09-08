@@ -6,7 +6,7 @@
 > The release gate is **local**: `python run_tests.py --parallel`, plus
 > `ruff check psh tests` and `mypy`. (GitHub per-PR CI is disabled.)
 
-This directory contains the active PSH test suite — about 24,925 tests
+This directory contains the active PSH test suite — about 30,379 tests
 across 789 `test_*.py` files. The layout below is generated from the real
 tree; if you add or rename a top-level area, update this list.
 

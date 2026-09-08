@@ -125,7 +125,8 @@
         },
         {
           "id": "1.6",
-          "title": "Executable round-trip"
+          "title": "Executable round-trip",
+          "release": "0.796.0"
         },
         {
           "id": "1.7",
@@ -384,6 +385,28 @@
             "W1-N84"
           ],
           "verification": "r1 BOUNCE (hang regression + 7th face), r2 PASS at be580abe"
+        },
+        {
+          "version": "0.796.0",
+          "date": "2026-09-08",
+          "slots": [
+            "1.6"
+          ],
+          "closes": [
+            "C033",
+            "C231"
+          ],
+          "registers": [
+            "W1-N69",
+            "W1-N70",
+            "W1-N71",
+            "W1-N72",
+            "W1-N75",
+            "W1-N76",
+            "W1-N82",
+            "W1-N85"
+          ],
+          "verification": "r1 BOUNCE, r2 BOUNCE, r3 PASS + 2 bounded confirms at 5746b656 (451 pins red on base)"
         }
       ]
     },
