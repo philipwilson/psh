@@ -237,6 +237,23 @@ class TestBashCommandSubstitution(ConformanceTest):
         self.assert_identical_behavior('cat <(echo hello)')
         self.assert_identical_behavior('diff <(echo a) <(echo b)')
 
+    def test_output_process_substitution(self):
+        """Test >(cmd): the bytes reach the substitution's own command.
+
+        Delivery is asynchronous in both shells (neither waits for a >(...)
+        child at command end), so the body drops a flag file after writing and
+        the script waits for it, bounded — a real delivery difference then
+        shows as a content mismatch rather than a timeout. Each conformance
+        case runs in its own temporary directory.
+        """
+        barrier = ('i=0; until [ -e flag ] || [ "$i" -ge 60 ]; '
+                   'do sleep 0.05; i=$((i+1)); done; ')
+        self.assert_identical_behavior(
+            'echo hi > >(cat > got; : > flag); ' + barrier + 'cat got')
+        self.assert_identical_behavior(
+            "printf 'a\nb\nc\n' | tee >(cat > got; : > flag) > /dev/null; "
+            + barrier + 'cat got')
+
 
 class TestBashBraceExpansion(ConformanceTest):
     """Test bash brace expansion compatibility."""

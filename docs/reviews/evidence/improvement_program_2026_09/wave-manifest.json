@@ -155,7 +155,8 @@
         },
         {
           "id": "1.13",
-          "title": "Process-substitution lifetime"
+          "title": "Process-substitution lifetime",
+          "release": "0.792.0"
         },
         {
           "id": "1.14",
@@ -305,6 +306,24 @@
             "W1-N57"
           ],
           "verification": "r1 (tmp/program-2026-09/verify/slot-1.5.md)"
+        },
+        {
+          "version": "0.792.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.13"
+          ],
+          "closes": [
+            "C082",
+            "C091",
+            "C081"
+          ],
+          "registers": [
+            "W1-N68",
+            "W1-N74"
+          ],
+          "nightly_watch": "38 write-side node ids (see nightly-status.md)",
+          "verification": "r1 BOUNCE (3 evidence/guard findings), r2 PASS at d122e162"
         }
       ]
     },

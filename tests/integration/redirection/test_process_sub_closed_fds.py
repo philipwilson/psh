@@ -8,12 +8,12 @@ fixed elsewhere:
   the close destroyed the substitution's own stdout; and the parent's read end
   could land on fd 1, so /dev/fd/1 aliased the closed shell stdout and the
   consumer's open failed (EACCES on macOS).
-- The write side >(cmd) did dup2(fifo_fd,0) then closed fifo_fd in a finally;
-  with fd 0 closed the FIFO open returned fd 0 and the finally closed the
+- The write side >(cmd) did dup2(sub_fd,0) then closed sub_fd in a finally;
+  with fd 0 closed the open returned fd 0 and the finally closed the
   substitution body's stdin (`cat: stdin: Bad file descriptor`).
 
 Both now wire their endpoints through the collision-safe remap_fds utility (and
-the read side keeps the parent's /dev/fd descriptor above fd 2). The redirect
+both keep the parent's /dev/fd descriptor above fd 2). The redirect
 dup/close paths were audited and needed no change — they already validate the
 source fd and preserve the target, matching bash apart from the universal
 `psh:` vs `bash:` diagnostic prefix.
@@ -21,18 +21,19 @@ source fd and preserve the target, matching bash apart from the universal
 Subprocess tests: they permanently close the shell's own std fds, so they MUST
 NOT run in-process. The substitution's delivery is observed on a fresh high
 descriptor (fd 9) written to a file, independent of the closed std fds. Pinned
-against the resolve_bash() oracle (5.2), executed through the shared typed
+against the resolve_bash() oracle, executed through the shared typed
 runner (hermetic env, own session, file-backed capture, bounded output).
 
-Oracle sanity: on macOS, bash's own ``/dev/fd/N`` open for a procsub pipe can
-fail with EPERM in some execution environments (observed in the v0.724-era
-gate: ``/dev/fd/63: Operation not permitted`` on every write-side case, while
-the same commands pass in a normal session — psh itself is immune, it uses
-FIFOs). A bash that cannot process-substitute AT ALL in this environment is a
-broken ORACLE, not a psh divergence, so the bash-comparison tests skip loudly
-instead of comparing against its failure (typed-harness principle: a harness
-failure never enters a behavior comparison).
+Environment sanity: in some execution environments (a seatbelt sandbox — seen
+in the v0.724-era gate as ``/dev/fd/63: Operation not permitted``, while the
+same commands pass in a normal session) reopening ``/dev/fd/N`` is refused
+outright. BOTH shells are pipe-and-``/dev/fd`` backed, so neither can process
+substitute there and no row in this module means anything. The precondition is
+therefore probed shell-neutrally, at the syscall (a pipe descriptor reopened
+through its own /dev/fd name), and every row skips loudly on it — a broken
+environment is a harness failure, never a psh divergence.
 """
+import fcntl
 import os
 import sys
 import tempfile
@@ -45,6 +46,34 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
                           'PYTHONPATH': str(REPO_ROOT)})
 BASH = resolve_bash().path
+
+
+def _dev_fd_reopen_works():
+    """True when THIS environment lets a process reopen its own /dev/fd/N.
+
+    Shell-neutral on purpose: probing with bash would let a psh regression hide
+    behind a bash failure, and probing with psh would let it hide behind its
+    own. Both shells need exactly this syscall to process-substitute.
+    """
+    read_fd, write_fd = os.pipe()
+    try:
+        flags = fcntl.fcntl(write_fd, fcntl.F_GETFD)
+        fcntl.fcntl(write_fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+        try:
+            probe = os.open(f"/dev/fd/{write_fd}", os.O_WRONLY)
+        except OSError:
+            return False
+        os.close(probe)
+        return True
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+_require_dev_fd_reopen = pytest.mark.skipif(
+    not _dev_fd_reopen_works(),
+    reason="this environment refuses to reopen /dev/fd/N (sandbox EPERM "
+           "class); no shell can process-substitute here")
 
 
 def _bash_procsub_sane():
@@ -84,7 +113,7 @@ READ_CASES = [
     ("exec 0<&- 1>&- 2>&-; ", 'cat <(printf x) >&9'),
 ]
 
-# Write-side delivery is ASYNCHRONOUS in both shells: neither bash 5.2 nor
+# Write-side delivery is ASYNCHRONOUS in both shells: neither bash nor
 # psh waits for a >(...) child at command end (bash's bare `wait` does reach
 # it; psh's does not — recorded as a successor divergence, deliberately not
 # exercised here), so fd 9's content at parent exit is a race, and the
@@ -109,6 +138,7 @@ WRITE_CASES = [
 ]
 
 
+@_require_dev_fd_reopen
 @_require_sane_bash_oracle
 @pytest.mark.parametrize("closures,body", READ_CASES)
 def test_read_side_procsub_closed_fds_matches_bash(closures, body):
@@ -117,6 +147,7 @@ def test_read_side_procsub_closed_fds_matches_bash(closures, body):
     assert psh == bash, f"{closures!r}: psh={psh!r} bash={bash!r}"
 
 
+@_require_dev_fd_reopen
 @_require_sane_bash_oracle
 @pytest.mark.parametrize("closures,body", WRITE_CASES)
 def test_write_side_procsub_closed_fds_matches_bash(closures, body):
@@ -125,6 +156,7 @@ def test_write_side_procsub_closed_fds_matches_bash(closures, body):
     assert psh == bash, f"{closures!r}: psh={psh!r} bash={bash!r}"
 
 
+@_require_dev_fd_reopen
 def test_read_side_delivers_with_stdout_closed():
     """exec 1>&-; cat <(printf x) delivers x (was EACCES on /dev/fd/1)."""
     _out, _err, fd9 = _observe([sys.executable, "-m", "psh"],
@@ -132,6 +164,7 @@ def test_read_side_delivers_with_stdout_closed():
     assert fd9 == "x"
 
 
+@_require_dev_fd_reopen
 def test_write_side_delivers_with_stdin_closed():
     """exec 0<&-; echo data > >(cat) delivers data (was Bad file descriptor)."""
     _out, _err, fd9 = _observe([sys.executable, "-m", "psh"],

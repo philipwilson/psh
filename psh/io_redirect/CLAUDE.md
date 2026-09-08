@@ -149,10 +149,11 @@ source's diagnostic names the SOURCE fd for the static spelling but the
 TARGET fd for the dynamic spelling (`_bad_dup_source_error`, bash-pinned).
 
 `ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
-`(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource(node)` builds
+`(path, parent_fd, pid)` — a substitution has no on-disk name to clean up, so
+the resource carries no path to unlink; `resolve_procsub_resource(node)` builds
 it from the `ProcessSubstitution` AST node (its raw `source`/`direction`, so the
-body is expanded once — by the child), and `register_with(handler)` hands
-pid/cleanup-path to the enclosing
+body is expanded once — by the child), and `register_with(handler)` hands the
+pid to the enclosing
 `process_sub_scope()`. `close_parent_fd_for_redirect()` and
 `hand_off_to_scope()` are the close-vs-transfer primitives the plan delegates
 to (the latter is the single place that appends to `active_fds`, shared by
@@ -537,28 +538,22 @@ BEFORE the temp object is closed and moved onto `target_fd` (via
 
 ### Process Substitution
 
-```python
-# <(cmd) creates:
-# 1. Pipe
-# 2. Fork child to run cmd
-# 3. Return /dev/fd/N path
+`process_sub.py#create_process_substitution` is the ONE acquisition for both
+directions, and it is the same mechanism on every platform: one pipe, one
+child forked through `fork_with_signal_window()` and run by
+`run_child_shell()` (`executor/child_policy.py`), the shell's end kept above
+fd 2 with close-on-exec cleared so an external consumer inherits it, and the
+path handed out is always `/dev/fd/<that fd>`. The child wires the other end
+onto stdout for `<(cmd)` and stdin for `>(cmd)` via `remap_fds`. **There is no
+named-FIFO variant and no open timeout** — the descriptor exists before the
+path is handed out, so a consumer that opens it seconds later still gets every
+byte (`psh -c 'bash -c "sleep 6; echo x > \$1" _ >(cat); sleep 7'` prints `x`).
 
-read_fd, write_fd = os.pipe()
-pid = os.fork()
-if pid == 0:  # Child
-    os.close(read_fd)
-    os.dup2(write_fd, 1)  # stdout to pipe
-    # Execute command
-    os._exit(exit_code)
-else:  # Parent
-    os.close(write_fd)
-    return f"/dev/fd/{read_fd}"
-```
-
-(Sketch only. The real implementation forks via
-`fork_with_signal_window()` and runs the whole child branch through the
-shared runner `run_child_shell()` — both in `executor/child_policy.py` —
-with the dup2 plumbing above passed as its `io_setup` hook.)
+Acquisition is all-or-nothing: every descriptor and the forked child are
+registered with one `ExitStack` as they are taken and ownership transfers to
+the caller only on the success path, so a failure at the pipe, the promotion
+above fd 2, the close-on-exec change or the fork leaks nothing. Add a new
+acquisition step INSIDE that stack, never beside it.
 
 ### Variable Expansion in Targets
 

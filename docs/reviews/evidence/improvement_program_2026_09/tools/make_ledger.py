@@ -491,6 +491,9 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C082': ('v0.792.0', 'slot 1.13: one pipe, no FIFO, no give-up timer; late opens receive every byte'),
+    'C091': ('v0.792.0', 'slot 1.13: one ExitStack owns every fd and the child, transferred only on success; fault injection both directions'),
+    'C081': ('v0.792.0', 'slot 1.13: the macOS FIFO fallback deleted — its premise was false; environment precondition is a shell-neutral syscall probe'),
     'C044': ('v0.789.0', 'slot 1.5: `ScopeManager._effective_binding_changed` (pops included); `CommandHashTable` sole subscriber; counter guard; matrix C044 cells flipped'),
     'C001': ('v0.788.0', 'slot 1.1: one-shot `ExecutionContext.for_pipeline_member` token consumed at `CommandExecutor.execute`; `in_pipeline` gone (ratchet `test_in_pipeline_ratchet.py`); pins `test_pipeline_member_one_shot.py`, `test_pipeline_member_conformance.py`, golden `pipeline_member_*`; PTY pins for the job-control guard'),
     'C179': ('v0.788.0', 'slot 1.1: the "nothing left to do" and setpgid comments corrected; the exec-assignment-loop drift is W1-N5 (6.2)'),

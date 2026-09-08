@@ -87,3 +87,33 @@
 | 2026-09-07 | 34094247398 | `4a865c68` (release tree + first attestation) | conformance GREEN, full suite RED (1 node) | full suite `25801 passed / 1 failed / 1728 skipped / 10 xfailed` (phase 1 `23142 passed / 1 failed / 1691 skipped / 8 xfailed`, phase 1b `1132 / 1 / 2`, phase 2 golden compare `1527 / 36`); conformance `3439 passed / 10 skipped / 8 xfailed` | first run on the built **5.3.15** (`BASH_VERSION=5.3.15(1)-release MACHTYPE=x86_64-pc-linux-gnu printf-%a-of-1=0x8p-3`; cache miss, built in the job). The ONE red node is the golden row `w0_2_trap_P_unset_prints_nothing_ignored_prints_empty_line`, whose expected stdout was rendered through `od -c` (BSD column layout on macOS, GNU on Linux) — a portability defect in the ROW, not in psh (phase 2 compared psh to bash on the same host and passed); fixed at `6ce05e5e` (awk brackets). Platform delta vs the local attest (`23187 / 1647 / 8`): +44 skips = 9 `%a` methods (7 x87 + 2 wide long double, exactly package B's prediction) + 24 `test_print_vs_zsh` (zsh not installed) + 6 mypy-absent (`test_mypy_untyped_defs_coverage:264`, `test_expansion_host_witness_5c1` ×5) + 5 shallow-checkout git-range tooling tests; `test_advanced_redirection.py:414` skips on both hosts. Conformance delta `3448 / 1` → `3439 / 10` = the same 9 `%a` methods. |
 | 2026-09-07 | 34098251725 | `c7f3db06` (final attestation commit) | both GREEN | full suite `25802 passed / 1728 skipped / 10 xfailed` (phase 1 `23143 / 1691 / 8`, phase 1b `1132 / 1 / 2`, phase 2 golden compare `1527 / 36`); conformance `3439 passed / 10 skipped / 8 xfailed`; benchmark tier `16 passed / 1 xfailed`; RD-vs-combinator differential `2 passed` | re-dispatch after the row fix and re-attestation (attest attempt 3 at `6ce05e5e`: `24319 / 1648 / 10`). Oracle restored from the cache key `bash-5.3.15-Linux-X64-…` and verified `5.3.15(1)-release` before any phase. Phase 1 is exactly the local attest minus the 44 explained skips (`23187 − 44 = 23143`); conformance is the local `3448 / 1` minus/plus the 9 `%a` methods. **Wave 0 exit criterion (§6) met on the dispatch runs**; merged to main as `ccc0e694` and auto-tagged v0.780.0. |
 | (first scheduled after Wave 0 merges) | PENDING — the next scheduled run executes at `ccc0e694`, the same tree as `c7f3db06`; expected census identical to run 34098251725 | | | | D11 reconciliation rule: append the observation here when it lands |
+
+## Nightly watch — slot 1.13 write-side process substitution (v0.792.0)
+
+The macOS gate CANNOT prove these rows. macOS `/dev/fd/N` is `fdesc` and behaves like
+`dup(N)` (the same open file description; a widening mode such as `O_RDWR` on a write-only
+end is refused with `EACCES`), while Linux's `/dev/fd` is `/proc/self/fd`, where opening a
+pipe's entry creates a NEW description on the same pipe object and an `O_RDONLY` open of a
+WRITE end yields the read end. Every write-side row therefore exercises a kernel path the
+local gate never reaches. **The first scheduled nightly after this merge must be green on
+these 38 node ids** (D11 reconciliation rule):
+
+- `tests/integration/redirection/test_process_sub_late_consumer.py::test_process_substitution_matches_bash[<case>-{c,file,stdin}]`
+  — 27, cases `late_open_write_side`, `write_side_bytes`, `write_side_late_body`,
+  `append_to_write_side`, `tee_to_write_side`, `external_consumer_opens_the_path`,
+  `external_consumer_redirects_low_fds`, `both_directions_one_command`, `exec_write_side`.
+- same file — 3: `test_substitution_loop_leaves_the_fd_table_unchanged[census_write_side-{c,file,stdin}]`.
+- `tests/integration/redirection/test_process_sub_closed_fds.py` — 5:
+  `test_write_side_procsub_closed_fds_matches_bash[<4 closure prefixes>]` and
+  `test_write_side_delivers_with_stdin_closed`.
+- `tests/behavioral/test_golden_behavior.py::test_golden[…]` — 2:
+  `c082_write_side_body_reading_late_still_receives_the_bytes`,
+  `c091_write_side_substitution_loop_leaves_the_fd_table_unchanged` (watch their
+  `test_golden_bash_comparison[…]` twins too if the `--compare-bash` leg runs — 40).
+- `tests/conformance/bash/test_bash_compatibility.py::TestBashCommandSubstitution::test_output_process_substitution` — 1.
+
+Second line of the same watch, a DISTINCT Linux risk the 38 do not cover: the six
+`path_numbers_match_bash{,_with_high_fds_taken}-{c,file,stdin}` nodes compare descriptor
+numbers to bash WITHOUT normalising, and the nightly is their first Linux exposure. They are
+not reopen surface, but they are the rows most likely to surprise if Linux bash allocates
+differently.

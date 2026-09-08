@@ -43,8 +43,11 @@ GUIDE = os.path.join(os.path.dirname(__file__), '..', '..',
 CONF_DIR = os.path.dirname(__file__)
 
 # Feature (exactly as in the table's first column) → (conformance file
-# relative to tests/conformance/, marker string). The marker must be a
-# distinctive substring of a test that exercises the feature *and asserts*.
+# relative to tests/conformance/, marker). The marker must be a distinctive
+# substring of a test that exercises the feature *and asserts*. A claim with
+# more than one face (a read and a write direction, say) names a TUPLE of
+# markers; every one of them must be found, so half a claim cannot pass as
+# the whole.
 CLAIM_TESTS = {
     'Command execution': ('posix/test_posix_compliance.py', 'VAR=value echo $VAR'),
     'Pipelines': ('posix/test_posix_compliance.py', 'echo hello | wc -c'),
@@ -55,7 +58,10 @@ CLAIM_TESTS = {
     'Local variables': ('bash/test_bash_compatibility.py', 'f() { local x=local; echo $x; }'),
     'Arithmetic expansion': ('posix/test_posix_compliance.py', 'echo $((3 * 4))'),
     'Brace expansion': ('bash/test_bash_compatibility.py', 'echo {a,b,c}'),
-    'Process substitution': ('bash/test_bash_compatibility.py', 'cat <(echo hello)'),
+    # Both directions: `>(cmd)` is half the claim, and an unmapped half is
+    # exactly what an over-claiming guard cannot see.
+    'Process substitution': ('bash/test_bash_compatibility.py',
+                            ('cat <(echo hello)', '> >(cat > got')),
     'Tilde expansion': ('posix/test_posix_compliance.py', 'echo ~/test'),
     'if/then/else/fi': ('posix/test_posix_compliance.py', 'if false; then echo no; else echo yes; fi'),
     'while/until/do/done': ('posix/test_posix_compliance.py', 'until [ $i -ge 2 ]'),
@@ -287,11 +293,14 @@ def test_claim_evidence_exists(feature):
     path = os.path.join(CONF_DIR, rel_path)
     assert os.path.exists(path), f"{feature}: missing conformance file {rel_path}"
     sources = _exercising_test_sources(path)
-    assert any(marker in s for s in sources), (
-        f"{feature}: marker {marker!r} was not found inside any asserting "
-        f"test in {rel_path}. The mapping must point at a test that genuinely "
-        f"exercises the feature (a class-name substring or an assert-free "
-        f"check_behavior probe does not count).")
+    markers = (marker,) if isinstance(marker, str) else tuple(marker)
+    assert markers, f"{feature}: mapping names no marker"
+    for one in markers:
+        assert any(one in s for s in sources), (
+            f"{feature}: marker {one!r} was not found inside any asserting "
+            f"test in {rel_path}. The mapping must point at a test that "
+            f"genuinely exercises the feature (a class-name substring or an "
+            f"assert-free check_behavior probe does not count).")
 
 
 # --- "No"-row staleness guard ----------------------------------------------
