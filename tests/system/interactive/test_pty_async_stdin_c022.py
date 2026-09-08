@@ -135,14 +135,17 @@ def test_async_reader_inherits_frame_stdin_at_the_prompt(psh, cmd, expected):
 
 
 # --------------------------------------------------------------------------
-# B1: the shape that HUNG. It needs THREE things at once — job control OFF (a
-# `-c` shell), stdout on a TERMINAL, and stdin somewhere else. `0>&1` then made
-# fd 0 a dup of the terminal, which is readable, so a background reader that
-# inherited it waited for input that never came and the shell never reached
-# `echo DONE`. At an interactive prompt the bug is unreachable (job control is
-# on, so the async policy never runs), and with stdout on a pipe or a file the
-# reader fails EBADF instead of blocking — which is why this row builds its own
-# terminal rather than reusing the prompt fixture above.
+# B1: the shape that HUNG. It needs TWO things — job control OFF (a `-c` shell)
+# and stdout on a TERMINAL. `0>&1` then made fd 0 a dup of the terminal, which
+# is readable, so a background reader that inherited it waited for input that
+# never came and the shell never reached `echo DONE`. The shell's own stdin is
+# irrelevant: at the round-1 tip this hung with stdin on /dev/null, on an empty
+# pipe, and on the SAME terminal (measured, all three). At an interactive
+# prompt the bug is unreachable (job control is on, so the async policy never
+# runs), and with stdout on a pipe or a file the reader fails EBADF instead of
+# blocking — which is why this row builds its own terminal rather than reusing
+# the prompt fixture above. stdin is /dev/null here only to keep the row from
+# depending on terminal input.
 # --------------------------------------------------------------------------
 
 def _run_c_mode_with_stdout_on_a_terminal(workdir, script, timeout=8):
@@ -183,6 +186,8 @@ def _run_c_mode_with_stdout_on_a_terminal(workdir, script, timeout=8):
             os.killpg(os.getpgid(child.pid), signal.SIGKILL)
         except ProcessLookupError:      # it exited in the meantime
             exited = True
+        except PermissionError:         # this host raises EPERM on killpg
+            pass                        # the wait below still reaps it
         child.wait(timeout=5)
     os.close(master)
     return OSC.sub("", out.decode(errors="replace").replace("\r", "")), exited

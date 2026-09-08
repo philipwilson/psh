@@ -257,6 +257,9 @@ class ProcessSubstitutionResource:
 
     @staticmethod
     def _target_fds(redirect: 'Redirect') -> Tuple[int, ...]:
+        # Deliberately NOT redirect_program.target_fd_of: this answers with the
+        # PAIR a combined redirect claims (`&>` takes 1 AND 2), which the
+        # single-fd rule cannot express. The single-fd cases below match it.
         if redirect.combined:
             return (1, 2)
         if redirect.fd is not None:

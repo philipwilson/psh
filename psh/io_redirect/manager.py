@@ -93,6 +93,7 @@ from .redirect_program import (
     RedirectOpKind,
     is_self_dup,
     list_supplies_frame_stdin,
+    target_fd_of,
 )
 
 if TYPE_CHECKING:
@@ -384,9 +385,7 @@ class IOManager:
         for redirect in redirects:
             if redirect.var_fd:
                 continue
-            fd = redirect.fd
-            if fd is None:
-                fd = 0 if redirect.type.startswith('<') else 1
+            fd = target_fd_of(redirect)
             if fd not in fds:
                 fds.append(fd)
         return fds

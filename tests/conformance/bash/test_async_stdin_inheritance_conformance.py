@@ -70,7 +70,11 @@ def _run(runner, script, mode, *, cwd=None, stdin_data=None, stdin_mode="file",
 #: The host's transient exec failure (several agents running suites at once).
 #: It empties a shell's stdout, which in a differential row is indistinguishable
 #: from "psh lost the input" unless the row LOOKS at stderr — so every row does.
-HOST_FLAKE = "Operation not permitted"
+#: The signature carries the ERRNO PREFIX deliberately: a bare "Operation not
+#: permitted" also matches a shell reporting a genuine EPERM (`kill -9 1`), and
+#: a row whose subject IS a permission failure must never be excused as a host
+#: artifact.
+HOST_FLAKE = "[Errno 1] Operation not permitted"
 
 
 def _check_no_host_flake(result, mode, script, which):
@@ -594,3 +598,26 @@ class TestDeclaredDivergences:
         p = run_psh([], stdin_data=payload, stdin_mode="pipe", cwd=str(d))
         assert is_comparable(b) and is_comparable(p), (b, p)
         assert (b.stdout, p.stdout) == ("END\n", "END\n"), (b.stdout, p.stdout)
+
+    @pytest.mark.parametrize("row,script", [
+        ("numbered_fd_heredoc",
+         '{ cat & wait; } 3<<EOF\nhd\nEOF\nread x; echo "[read=$x]"'),
+        ("numbered_fd_here_string",
+         '{ cat & wait; } 3<<< HS; read x; echo "[read=$x]"'),
+    ])
+    def test_face_f_covers_the_numbered_fd_here_forms(self, row, script,
+                                                      tmp_path):
+        """C022 face f, here-document spellings: `3<<EOF` and `3<<< HS` supply
+        fd 3, not fd 0.
+
+        bash's classifier answers on the INSTRUCTION alone for the here forms
+        (`redir.c#stdin_redirection` returns 1 for `r_reading_until` /
+        `r_reading_string` whatever the redirector), so it suppresses the async
+        default and its reader eats the shell's own stdin. The fd-0 spellings
+        of the same operators AGREE — pinned as parity rows above — so the
+        divergence is the fd NUMBER, not the operator.
+        """
+        for mode, got_bash, got_psh in self._rows(
+                script, tmp_path, modes=("-c", "file"), stdin_data="A\nB\n"):
+            assert got_bash == "A\nB\n[read=]\n", (mode, row, got_bash)
+            assert got_psh == "[read=A]\n", (mode, row, got_psh)

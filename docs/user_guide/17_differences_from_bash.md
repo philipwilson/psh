@@ -786,7 +786,9 @@ printf 'A\nB\n' | psh -c '{ true; } < f; cat & wait; read x; echo "[$x]"'
 
 printf 'A\nB\n' | psh -c '{ cat & wait; } 3< f; read x; echo "[$x]"'
 # same split: bash treats `3< f` as a standard-input redirection, psh follows the
-# fd that was actually rebound
+# fd that was actually rebound. The here-document spellings behave the same way:
+# `3<<EOF …` and `3<<< word` supply fd 3 in psh and are treated as redirections
+# of standard input by bash. On fd 0 (`<<EOF`, `<<< word`) the two agree.
 ```
 
 The first shape needs the two commands to share one *top-level* command — a
