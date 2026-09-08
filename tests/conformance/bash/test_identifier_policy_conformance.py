@@ -14,10 +14,9 @@ bash 5.2 and re-verified against bash 5.3.15 (Wave 0.2, 2026-09-06):
   are REJECTED just as bash rejects them — an assignment ``é=1`` becomes a
   command (``command not found``, 127); ``declare``/``read`` report "not a
   valid identifier" (status 1) and continue in both shells, while ``export``/
-  ``readonly`` EXIT a non-interactive posix shell on bash 5.3 (CHANGES
-  5.3-alpha jj / nnnnn) where psh still continues — a declared divergence
-  pinned both sides in test_export_readonly_unicode_exit_in_posix_declared_divergence
-  and owned by slot 2.2.
+  ``readonly`` EXIT a non-interactive posix shell (bash 5.3 CHANGES,
+  bash-5.3-alpha, "1. Changes to Bash" items jj / nnnnn; psh followed in slot
+  2.2, so test_export_readonly_unicode_exit_in_posix is an equality row).
 * **Function NAMES are unrestricted in posix mode** in both shells (bash 5.3
   CHANGES, 5.3-beta "New Features in Bash" item p: "Posix mode no longer
   requires function names to be valid shell identifiers"): ``é``, ``9x`` and
@@ -184,19 +183,18 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "not a valid identifier" in bash.stderr, command
 
     @pytest.mark.oracle_min("5.3")
-    def test_export_readonly_unicode_exit_in_posix_declared_divergence(self):
-        """DECLARED DIVERGENCE, both sides pinned: bash 5.3 semantics; psh to
-        follow in slot 2.2.
+    def test_export_readonly_unicode_exit_in_posix(self):
+        """The POSIX special builtins ``export`` and ``readonly`` EXIT a
+        non-interactive posix-mode shell on an invalid identifier.
 
-        bash 5.3 (CHANGES 5.3-alpha section 1 items jj / nnnnn) makes the
-        POSIX special builtins ``export`` and ``readonly`` EXIT a
-        non-interactive posix-mode shell on an invalid identifier: probed on
-        5.3.15 (C.UTF-8, -c / script / stdin alike) ``export é=1`` and
-        ``readonly é=1`` print nothing to stdout and exit 1, while psh still
-        reports and continues (``done``, rc 0).  Both sides diagnose "not a
-        valid identifier".  Same psh fix as the export/readonly rows of
+        bash 5.3 (CHANGES, bash-5.3-alpha, "1. Changes to Bash" items jj /
+        nnnnn) widened the exit set to this operand error; psh followed in
+        slot 2.2 (gate row G22).  Probed on 5.3.15 (C.UTF-8, -c / script /
+        stdin alike): ``export é=1`` and ``readonly é=1`` print nothing to
+        stdout and exit 1, and both sides diagnose "not a valid identifier".
+        The three-mode legs live in
         tests/conformance/posix/test_posix_special_builtin_exit_conformance.py
-        (where the three-mode legs live; this module's runner is -c only).
+        (this module's runner is -c only).
         """
         for builtin in ["export é=1", "readonly é=1"]:
             command = f"set -o posix; {builtin}; echo done"
@@ -205,11 +203,35 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert (bash.stdout, bash.returncode) == ("", 1), (
                 f"ORACLE side moved: {command!r} -> {bash.stdout!r} "
                 f"rc={bash.returncode}")
-            assert (psh.stdout, psh.returncode) == ("done\n", 0), (
-                f"PSH side moved (slot 2.2 landed? flip this row): "
+            assert (psh.stdout, psh.returncode) == ("", 1), (
                 f"{command!r} -> {psh.stdout!r} rc={psh.returncode}")
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
+
+    @pytest.mark.oracle_min("5.3")
+    def test_unset_v_unicode_exit_in_posix(self):
+        """The `unset -v` twin of test_export_readonly_unicode_exit_in_posix.
+
+        `unset` is a POSIX special builtin, and with an explicit `-v` bash
+        5.3.15 identifier-checks every operand (CHANGES, bash-5.3-alpha,
+        "1. Changes to Bash" items jj / nnnnn; slot 2.2 closed ledger row
+        W0-N32).  Under `set -o posix` `é` is not a valid identifier in
+        EITHER shell, so both print nothing to stdout and exit 1.  This is
+        the row that pins the `-v` check against POSIX MODE rather than
+        against the default policy: without the posix argument psh would
+        accept `é` here and survive, which is its documented default-mode
+        behaviour (test_unset_v_accepted_by_psh below) but wrong under posix.
+        """
+        command = "set -o posix; unset -v é; echo done"
+        bash = _run(BASH, command)
+        psh = _run(PSH, command)
+        assert (bash.stdout, bash.returncode) == ("", 1), (
+            f"ORACLE side moved: {command!r} -> {bash.stdout!r} "
+            f"rc={bash.returncode}")
+        assert (psh.stdout, psh.returncode) == ("", 1), (
+            f"{command!r} -> {psh.stdout!r} rc={psh.returncode}")
+        assert "not a valid identifier" in psh.stderr, command
+        assert "not a valid identifier" in bash.stderr, command
 
     def test_for_and_select_rejected_by_both(self):
         # Both shells REJECT; bash parse-aborts (exit 2), psh rejects at exec
@@ -312,6 +334,16 @@ class TestUnicodeAcceptedWithoutPosixDivergence:
         assert psh.stdout == "rc=0\n"
         bash = _run(BASH, "declare é=1; echo rc=$?")
         assert bash.stdout == "rc=1\n"
+
+    def test_unset_v_accepted_by_psh(self):
+        # The default-mode half of the `unset -v` name check (slot 2.2,
+        # W0-N32): bash refuses `é` in BOTH modes, psh only under posix.
+        psh = _run(PSH, "unset -v é; echo rc=$?")
+        assert psh.stdout == "rc=0\n", psh.stdout
+        assert psh.stderr == "", psh.stderr
+        bash = _run(BASH, "unset -v é; echo rc=$?")
+        assert bash.stdout == "rc=1\n", bash.stdout
+        assert "not a valid identifier" in bash.stderr
 
     def test_for_loop_accepted_by_psh(self):
         psh = _run(PSH, "for é in a b; do echo -n $é; done; echo")

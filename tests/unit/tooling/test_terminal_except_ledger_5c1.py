@@ -227,8 +227,8 @@ TERMINAL_HANDLERS = {
 
     # --- DEFECT_REPORTED: surfaces under PSH_STRICT_ERRORS. ------------------
     ("psh/core/trap_manager.py", "execute_trap",
-     ("_push_trap_action_frame", "get_current_line_number", "pop",
-      "run_command")):
+     ("_push_trap_action_frame", "_run_trap_action",
+      "get_current_line_number", "pop")):
         ("DEFECT_REPORTED",
          "a user trap body is arbitrary shell code invoked from a signal-ish "
          "context; a defect in psh while running it is reported through "

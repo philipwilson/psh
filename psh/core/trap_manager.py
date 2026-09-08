@@ -548,18 +548,7 @@ class TrapManager:
             # rule is restored when it unwinds.
             self._push_trap_action_frame(signal_name, saved_exit_code)
             try:
-                # posix_syntax_exit=False: a parse failure of the ACTION
-                # string itself never triggers the POSIX-mode syntax exit,
-                # while a nested source with its OWN input still does.
-                # Reproduce (bash 5.3.15 and psh agree on both):
-                #   set -o posix; trap 'if' USR1; echo survived=$?
-                #     -> survived=0, the shell lives
-                #   set -o posix; trap "eval 'if'" USR1
-                #   kill -USR1 $$; sleep 0.2; echo reached
-                #     -> rc 2, `reached` never printed
-                self.shell.run_command(action, add_to_history=False,
-                                       base_line=base_line,
-                                       posix_syntax_exit=False)
+                self._run_trap_action(action, base_line)
             finally:
                 self._trap_action_depth -= 1
                 self._trap_action_frames.pop()
@@ -589,6 +578,44 @@ class TrapManager:
             # by run_command's own guards and never reach here.
             from .internal_errors import report_internal_defect
             report_internal_defect(self.state, e, stream=self.state.stderr)
+
+    def _run_trap_action(self, action: str, base_line: int) -> None:
+        """Run one trap ACTION string with the two boundaries bash gives it.
+
+        ``posix_syntax_exit=False``: a parse failure of the ACTION string
+        itself never triggers the POSIX-mode syntax exit, while a nested
+        source with its OWN input still does. Reproduce (bash 5.3.15 and psh
+        agree on both)::
+
+            set -o posix; trap 'if' USR1; echo survived=$?
+              -> survived=0, the shell lives
+            set -o posix; trap "eval 'if'" USR1
+            kill -USR1 $$; sleep 0.2; echo reached
+              -> rc 2, `reached` never printed
+
+        The action also runs behind a POSIX suppressible-exit BOUNDARY: bash
+        runs it between commands, so a guard around the INTERRUPTED command
+        does not suppress a special-builtin exit inside the action, though a
+        guard inside the action does (bash 5.3.15)::
+
+            set -o posix; trap 'set -q' DEBUG; false || echo caught
+              -> rc 2, `caught` never printed
+            set -o posix; trap 'set -q || echo in' EXIT; echo body
+              -> body / in, rc 0
+
+        See ``executor/context.py#ExecutionContext.trap_action_boundary``.
+        Without a live executor there is no suppression depth to fence off.
+        """
+        executor = getattr(self.shell, '_current_executor', None)
+        if executor is None:
+            self.shell.run_command(action, add_to_history=False,
+                                   base_line=base_line,
+                                   posix_syntax_exit=False)
+            return
+        with executor.context.trap_action_boundary():
+            self.shell.run_command(action, add_to_history=False,
+                                   base_line=base_line,
+                                   posix_syntax_exit=False)
 
     def list_signals(self) -> str:
         """Render the full signal listing for `trap -l`.

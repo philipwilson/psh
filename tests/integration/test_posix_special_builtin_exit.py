@@ -1,20 +1,27 @@
 """POSIX-mode special-builtin EXIT-on-error (matrix implementation pins).
 
 Truth table: docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md,
-re-derived + extended live against bash 5.2.26 (tmp/posixexit battery,
-fix/posix-special-exit campaign). The rule: with ``set -o posix``, a
-NON-interactive shell EXITS — later lines never run — when a special
-builtin hits a USAGE/SYNTAX error (invalid option, ``return`` at top
-level, missing/unreadable ``.``/``source`` file, ``eval``/dot syntax
+re-derived + extended live against bash 5.3.15. The rule: with ``set -o
+posix``, a NON-interactive shell EXITS — later lines never run — when a
+special builtin hits a USAGE/SYNTAX error (invalid option, ``return`` at
+top level, missing/unreadable ``.``/``source`` file, ``eval``/dot syntax
 error, assignment to a readonly via ``readonly``/``export``/bare
-assignment) with the builtin's own status; it does NOT exit on
-OPERAND/semantic errors (bad identifier, bad signal spec, unset of a
-readonly). ``command``/``builtin`` strip the exit; fork boundaries
-(subshell, command substitution, pipeline) contain it.
+assignment) with the builtin's own status. bash 5.3 WIDENED the set to
+OPERAND errors (CHANGES, bash-5.3-alpha, "1. Changes to Bash" item jj,
+"POSIX special builtins now exit the shell in posix mode on more failure
+cases"; item nnnnn): an invalid identifier given to ``export``/``readonly``
+(stopping the operand loop at the FIRST one) and ``unset`` refusing a
+readonly variable/array/element/function (after diagnosing every operand).
+A bad signal spec to ``trap`` and ``unset 1bad`` still do not exit.
+``command``/``builtin`` strip the exit; fork boundaries (subshell, command
+substitution, pipeline) contain it. On 5.3 an OUTER guard also suppresses
+the suppressible class ACROSS an ``eval``/``.`` boundary; a TRAP ACTION is
+the one boundary it does not cross.
 
 Red→green anchors (FAILED at base a3629202) are marked RED-ON-BASE in
 their docstrings; the must-NOT-exit rows are defensive-green
-discriminators (already passing on base) unless marked otherwise.
+discriminators (already passing on base) unless marked otherwise. The
+5.3-semantic rows (slot 2.2) are marked RED-ON-BASE-2.2.
 """
 import os
 import subprocess
@@ -75,15 +82,41 @@ EXITING_ROWS = [
     ("readonly r=1\nexport r=2", 1),
     ("readonly r=1\nr=2", 1),
     ("f() { set -q; }\nf", 2),
+    # bash 5.3 operand rows (RED-ON-BASE-2.2; they were SURVIVING_ROWS).
+    ("export 1bad=x", 1),
+    ("export 1bad=x 2bad=y", 1),
+    ("readonly 1bad=x", 1),
+    ("readonly 1bad", 1),
+    ("readonly r=1\nunset r", 1),
+    ("declare -a arr=(1 2)\nreadonly arr\nunset arr[0]", 1),
+    ("f() { :; }\nreadonly -f f\nunset -f f", 1),
+    ("f() { :; }\nreadonly -f f\nunset f", 1),
+    ("readonly r=1\nunset r[1]", 1),     # readonly outranks the shape check
+    ("declare -A h=([k]=v)\nreadonly h\nunset h[nokey]", 1),
+    # W0-N32: an explicit -v identifier-checks every operand.
+    ("unset -v 1bad", 1),
+    ("unset -v a-b", 1),
+    ("unset -v ''", 1),
+    ("unset -v '1a[0]'", 1),
+    ("unset -v 1bad 2bad", 1),
+    ("readonly 1bad 2bad", 1),
+    ("readonly 1bad A=1", 1),
 ]
 
 # Matrix rows that must NOT exit in POSIX mode: (case-lines, $? after).
 SURVIVING_ROWS = [
-    ("export 1bad=x", 1),
-    ("readonly 1bad=x", 1),
     ("trap 'x' NOSUCHSIG", 1),
-    ("readonly r=1\nunset r", 1),
     ("unset 1bad", 0),
+    ("readonly -f nosuchfunc", 1),       # -f operands are exempt
+    ("unset 1bad a-b", 0),               # no -v: function fallback, silent
+    ("unset -n 1bad", 0),
+    ("a=1\nunset -v 'a[0]'", 0),         # judged on the BASE name
+    ("command unset -v 1bad", 1),        # command strips the W0-N32 exit
+    ("a=1\nunset a[1]", 1),              # not an array variable, not fatal
+    ("declare -a a=(1 2)\nunset a[-9]", 1),   # bad array subscript
+    ("command export 1bad=x", 1),        # command strips the 5.3 exit
+    ("command readonly 1bad=x", 1),
+    ("readonly r=1\ncommand unset r", 1),
     ("readonly r=1\ndeclare r=2", 1),   # declare is NOT special
     ("unset -f -v x", 1),               # option CONFLICT, not invalid option
     ("( set -q )", 2),                  # fork boundary contains the exit
@@ -132,6 +165,80 @@ class TestPosixSurvivingRows:
         assert "survived" in out, (case, out, err)
         assert f"rc={status}" in out, (case, out, err)
         assert rc == 0, (case, rc, err)
+
+
+class TestOperandsActuallyApplied:
+    """D3 actual-target rows: read the RULE off the variables themselves.
+
+    `export`/`readonly` stop at the first bad identifier, so a later good
+    operand must NOT exist; `unset -v` does not stop, so a later operand must
+    really be gone. A status alone cannot tell those two apart."""
+
+    def test_export_applies_earlier_operands_and_skips_later_ones(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\nexport A=1 1bad=x B=2 || echo caught\n"
+            'echo "B=${B-unset}"\ndeclare -p A\n', tmp_path)
+        assert out == 'caught\nB=unset\ndeclare -x A="1"\n', (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+    def test_readonly_applies_earlier_operands_and_skips_later_ones(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\nreadonly A=1 1bad B=2 || echo caught\n"
+            'echo "B=${B-unset}"\ndeclare -p A\n', tmp_path)
+        assert out == 'caught\nB=unset\ndeclare -r A="1"\n', (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+    def test_readonly_attribute_is_really_enforced(self, tmp_path):
+        """The `declare -p` row above says the attribute is RECORDED; this one
+        says it BITES — assigning to A afterwards is refused."""
+        rc, out, err = run_script(
+            "set -o posix\nreadonly A=1 1bad B=2 || echo caught\n"
+            'A=9\necho "A=$A"\n', tmp_path)
+        assert out == "caught\n", (out, err)
+        assert "A: readonly variable" in err, err
+        assert rc == 1
+
+    def test_unset_v_unsets_operands_after_a_bad_one(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\na=1 d=1\nunset -v a b-c d || echo caught\n"
+            'echo "a=[${a-unset}] d=[${d-unset}]"\necho survived\n', tmp_path)
+        assert out == "caught\na=[unset] d=[unset]\nsurvived\n", (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+
+class TestExitTrapSeesTheBuiltinStatus:
+    """`$?` inside the EXIT trap after a posix special-builtin exit is the
+    builtin's own status (bash 5.3.15), not 0 — the trap runs after the
+    unwind and reads the live status the policy publishes."""
+
+    @pytest.mark.parametrize("case,status", [
+        ("export 1bad=x", 1),
+        ("readonly r=1\nunset r", 1),
+        ("unset -v 1bad", 1),
+        ("readonly r=1\nreadonly r=2", 1),
+        (". /nonexistent/psh-posixexit-trapstatus", 1),
+        ("set -q", 2),
+        ("eval 'if'", 2),
+    ], ids=["export-badid", "unset-readonly", "unset-v-badid",
+            "readonly-assign", "dot-missing", "set-q", "eval-syntax"])
+    def test_trap_sees_the_status(self, case, status, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'echo trap rc=$?' EXIT\n" + case
+            + "\necho survived\n", tmp_path)
+        assert out == f"trap rc={status}\n", (case, out, err)
+        assert rc == status, (case, rc, err)
+
+    def test_suppressed_exit_leaves_the_trap_status_alone(self, tmp_path):
+        """Discriminator: the publish must not happen when a guard suppresses
+        the exit — the shell runs on and finishes successfully."""
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'echo trap rc=$?' EXIT\n"
+            "set -q || echo caught\necho survived\n", tmp_path)
+        assert out == "caught\nsurvived\ntrap rc=0\n", (out, err)
+        assert rc == 0
 
 
 class TestInputModes:
@@ -557,9 +664,11 @@ class TestPosixHardExitNotSuppressed:
 
 
 class TestSuppressionBoundaries:
-    """The suppression reaches through functions/brace groups/subshells and
-    trap actions but NOT across an eval/dot boundary; guards INSIDE the
-    eval'd/sourced text re-establish it (probe-pinned to bash 5.2)."""
+    """The suppression reaches through functions, brace groups, subshells AND
+    (bash 5.3) an eval/dot boundary; guards INSIDE the eval'd/sourced text
+    re-establish it. A TRAP ACTION is the one boundary it does not cross —
+    bash runs the action between commands, so a guard around the INTERRUPTED
+    command does not reach it (probe-pinned to bash 5.3.15)."""
 
     def test_guard_inside_eval_suppresses(self, tmp_path):
         rc, out, err = run_script(
@@ -568,24 +677,74 @@ class TestSuppressionBoundaries:
         assert out == "in\nsurvived rc=0\n"
         assert rc == 0
 
-    def test_guard_outside_eval_does_not_suppress(self, tmp_path):
-        """Defensive-green: `if eval 'set -q'` exits (eval boundary)."""
+    def test_guard_outside_eval_suppresses(self, tmp_path):
+        """RED-ON-BASE-2.2: bash 5.3 lets the OUTER guard reach across the
+        eval boundary — `if eval 'set -q'` takes the else branch and the
+        shell lives (5.2 exited 2 here)."""
         rc, out, err = run_script(
             "set -o posix\nif eval 'set -q'; then echo T; else echo F; fi\n"
             "echo survived\n", tmp_path)
-        assert "survived" not in out
-        assert rc == 2
+        assert out == "F\nsurvived\n"
+        assert rc == 0
 
-    def test_guard_outside_dot_does_not_suppress(self, tmp_path):
-        """Defensive-green: a guarded `.` of a file whose body has the
-        suppressible error still exits (dot boundary)."""
+    def test_guard_outside_dot_suppresses(self, tmp_path):
+        """RED-ON-BASE-2.2: same across a `.` boundary."""
         aux = tmp_path / "aux_sup.sh"
         aux.write_text("set -q\n")
         rc, out, err = run_script(
             f"set -o posix\nif . {aux}; then echo T; else echo F; fi\n"
             "echo survived\n", tmp_path)
+        assert out == "F\nsurvived\n"
+        assert rc == 0
+
+    def test_or_guard_outside_eval_suppresses_operand_exit(self, tmp_path):
+        """RED-ON-BASE-2.2: the 5.3 OPERAND class crosses the boundary too —
+        the export identifier exit is caught by the guard outside the eval."""
+        rc, out, err = run_script(
+            "set -o posix\neval 'export 1bad=x' || echo caught\n"
+            "echo survived\n", tmp_path)
+        assert out == "caught\nsurvived\n"
+        assert rc == 0
+
+    def test_unguarded_eval_operand_error_still_exits(self, tmp_path):
+        """Discriminator for the row above: without the guard the same eval
+        exits 1 — the suppression is the guard's doing, not the boundary's."""
+        rc, out, err = run_script(
+            "set -o posix\neval 'export 1bad=x'\necho survived\n", tmp_path)
+        assert "survived" not in out
+        assert rc == 1
+
+    def test_guard_outside_trap_action_does_not_suppress(self, tmp_path):
+        """The one boundary the 5.3 suppression does NOT cross: a DEBUG trap
+        action fires while the `||` left member is guarded, and the special
+        builtin inside it still exits 2 (bash 5.3.15, all three modes)."""
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'set -q' DEBUG\nfalse || echo caught\n"
+            "echo survived\n", tmp_path)
+        assert "caught" not in out
         assert "survived" not in out
         assert rc == 2
+
+    def test_guard_outside_signal_trap_action_does_not_suppress(self, tmp_path):
+        """Same boundary through an asynchronous signal trap: the guard around
+        the brace group that raises the signal does not reach the action."""
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'set -q' USR1\n"
+            "{ kill -USR1 $$; sleep 0.2; } || echo caught\necho survived\n",
+            tmp_path)
+        assert "caught" not in out
+        assert "survived" not in out
+        assert rc == 2
+
+    def test_operand_error_inside_trap_action_exits(self, tmp_path):
+        """RED-ON-BASE-2.2: the 5.3 operand class inside a trap action exits
+        the shell, and the action's own later command never runs."""
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'export 1bad=x; echo after' EXIT\n"
+            "echo body\n", tmp_path)
+        assert out == "body\n"
+        assert "after" not in out
+        assert rc == 1
 
     def test_guard_inside_sourced_file_suppresses(self, tmp_path):
         aux = tmp_path / "aux_sup2.sh"

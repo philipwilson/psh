@@ -205,13 +205,14 @@ class SourceProcessor(ScriptComponent):
         executions anchored at an invoking command's line (eval, trap actions);
         see Shell.run_command.
 
-        A NESTED run (eval / dot / trap action — an enclosing executor is
-        active) raises the POSIX suppressible-exit FLOOR to the entry-time
-        suppression depth for the duration of this source: bash's
-        posix-mode suppression of the invalid-option/return exit class does
-        NOT reach across an eval/dot boundary (``eval 'set -q' || x`` still
-        exits; a guard INSIDE the eval'd text suppresses again) — see
-        ``ExecutionContext.special_exit_floor``.
+        A nested run (eval / dot) is TRANSPARENT to the POSIX
+        suppressible-exit exemption on bash 5.3: an OUTER guard suppresses
+        across the boundary (``set -o posix; eval 'set -q' || echo caught``
+        prints ``caught``, rc 0 — CHANGES, bash-5.3-alpha, "1. Changes to
+        Bash" item nnnnn; the 5.2 series exited there). Only a TRAP ACTION
+        raises the floor, and its own runner does that — see
+        ``ExecutionContext.trap_action_boundary`` and
+        ``core/trap_manager.py#execute_trap``.
         """
         # Implicit process activation (campaign F2): the outermost execution
         # entry acquires the owner token + a LIFO lease BEFORE any parsing
@@ -226,18 +227,8 @@ class SourceProcessor(ScriptComponent):
             saved_recording = self.state._history_recording_active
             self.state._history_recording_active = add_to_history
             try:
-                executor = getattr(self.shell, '_current_executor', None)
-                if executor is None:
-                    return self._run_from_source(input_source, add_to_history,
-                                                 base_line)
-                saved_floor = executor.context.special_exit_floor
-                executor.context.special_exit_floor = \
-                    executor.context.errexit_suppress
-                try:
-                    return self._run_from_source(input_source, add_to_history,
-                                                 base_line)
-                finally:
-                    executor.context.special_exit_floor = saved_floor
+                return self._run_from_source(input_source, add_to_history,
+                                             base_line)
             finally:
                 self.state._history_recording_active = saved_recording
 

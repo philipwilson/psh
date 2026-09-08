@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.790.0 (2026-09-08) - POSIX special-builtin exits follow bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.2)
+- POSIX special-builtin exits follow bash 5.3 (CHANGES 5.3-alpha items jj and
+  nnnnn; gate rows G18–G22 / FLIP-PINS 2.2): in a POSIX-mode non-interactive
+  shell, `export`/`readonly` with an invalid identifier exit with status 1 and
+  the operand loop stops at the FIRST bad name (`export 1bad=x 2bad=y` prints
+  one diagnostic); `unset` refusing a readonly variable, array, element or
+  function exits with status 1 after diagnosing EVERY operand (the
+  stop-at-first rule is POSIX mode's, not the exit's, and does not apply to
+  `unset` — probe-corrected from the brief); its readonly-function wording is
+  bash's `unset: f: cannot unset: readonly function` and a readonly refusal
+  outranks the `not an array variable` complaint; an OUTER guard suppresses
+  the exit across an `eval` or `.` boundary (`set -o posix; eval 'set -q' ||
+  echo caught` prints `caught`) while a trap action stays opaque to the
+  suppression, as in bash; `command`/`builtin` still strip the exit, subshells
+  contain it, and the hard class (eval/dot syntax errors, a missing dot-file,
+  a readonly ASSIGNMENT) still exits under a guard. Default mode unchanged;
+  `declare`/`typeset`/`local`/`read` always report-and-continue. One policy
+  owner (`special_builtin_usage_exit` + `SpecialBuiltinUsageError(1,
+  suppressible=True)`); the eval/dot `special_exit_floor` raise deleted. The
+  FLIP-PINS 2.2 rows flipped to parity pins (`TestPosixSpecialBuiltinExitParity`,
+  three modes), golden `posixexit_*` rows flipped/renamed, the integration
+  module SURVIVING→EXITING, the matrix doc rows and user guide §17 updated.
+- Ledger: W0-N32 (`unset -v <bad-identifier>` refused with a diagnostic and,
+  in posix, the suppressible exit — closed by this slot after its round-1
+  bounce) and W1-N36 (`a=1; unset 'a[]]'` refused by psh where bash 5.3.15 is silent
+  rc 0 — oracle drift of a bash-5.2 probe in `_unset_array_element`) registered;
+  W1-N34 (`set -o posix; f(){ return abc; }` — bash exits 2, psh continues;
+  from slot 2.3) owned by a 2.2 rider.
+- Flipped by this change: `test_divergence_unset_nonbracket_arg_silent` pinned
+  the divergence this slot closes — `unset -v 'a["]"'` (an argument containing
+  `[` but not ending in `]`) used to be a silent rc-0 no-op in psh, because it
+  never reached the element-keying sites, while bash refused it loudly. psh now
+  refuses it with bash's own message and status, so that row becomes the parity
+  pin `test_unset_nonbracket_arg_is_refused_like_bash`. Its docstring had
+  predicted the flip; the release gate is what caught that it was due.
+- Verification: round 1 BOUNCE (W0-N32 pushed out of scope; an owner defect; two surviving owner mutations), round 2 PASS at 9226500b (53/54, 26/27, 13/13 rows equal; mutations die on 14/7/5 nodes) with one declared divergence added on the ruling (W1-N64); reports `tmp/program-2026-09/verify/slot-2.2*.md`.
+
 ## 0.789.0 (2026-09-07) - PATH restored on scope exit restores dispatch (Improvement Program 2026-09, Wave 1 slot 1.5)
 - P1 WRONG TARGET (C044; slot 1.5): returning from a function that set
   `local PATH` (or a `PATH=dir f` prefix) restored the variable but not the
