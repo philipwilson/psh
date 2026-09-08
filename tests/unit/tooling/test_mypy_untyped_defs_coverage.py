@@ -347,6 +347,9 @@ POST_ENDPOINT_MIGRATED: list = [
     # annotated at birth and given both disallow flags in pyproject, so it is
     # MIGRATED rather than out of scope.
     "psh.builtins.numeric",
+    # slot 1.10 (C041): new, fully annotated — kept under both disallow flags
+    # by the pyproject override rather than joining the untyped default.
+    "psh.executor.null_command",
 ]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline

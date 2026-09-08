@@ -37,7 +37,10 @@ EXPECTED_OPTIONS = {
     "globstar", "globasciiranges", "inherit_errexit", "checkhash",
     "expand_aliases", "huponexit",
     # internal (shell-set)
-    "interactive", "stdin_mode", "command_mode",
+    # `interactive_session` joined in Improvement Program 2026-09 slot 1.10
+    # (C040): the INHERITED "the user is typing at this session" fact the
+    # `set -n` refusal reads, distinct from the per-child `interactive`.
+    "interactive", "interactive_session", "stdin_mode", "command_mode",
 }
 
 # Non-False defaults (everything else defaults to False).

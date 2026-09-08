@@ -55,6 +55,7 @@ from .command_resolution import (
     normalize_command_word,
     resolve_command,
 )
+from .null_command import null_command_status
 from .strategies import (
     BuiltinExecutionStrategy,
     ExecutionStrategy,
@@ -349,9 +350,11 @@ class CommandExecutor:
 
         - Assignments apply left to right; each element/init value expansion
           records ``state.last_cmdsub_status`` (the caller cleared it first).
-        - The command's status is that last command-substitution status if one
-          ran while expanding (bash: ``a[0]=$(false)`` -> 1,
-          ``a=($(sh -c 'exit 7'))`` -> 7), else 0. A SUCCESSFUL operation whose
+        - The command's status is the null-command status
+          (:mod:`psh.executor.null_command`): the last command-substitution
+          status if one ran while expanding (bash: ``a[0]=$(false)`` -> 1,
+          ``a=($(sh -c 'exit 7'))`` -> 7), 0 if a redirection targeted fd 0
+          (``a=($(exit 5)) < f`` -> 0), else 0. A SUCCESSFUL operation whose
           value's substitution failed is NOT an operation failure.
         - A failed assignment OPERATION (bad subscript, readonly) is fatal: it
           stops later assignments (first-failure — bash's ``a[-1]=x b[0]=y``
@@ -371,9 +374,7 @@ class CommandExecutor:
             with self.io_manager.guarded_redirections(node.redirects) as ok:
                 if not ok:
                     return 1
-        if self.state.last_cmdsub_status is not None:
-            return self.state.last_cmdsub_status
-        return 0
+        return null_command_status(self.state, node.redirects)
 
     @staticmethod
     def _array_assignment_lhs(assignment) -> str:
@@ -386,6 +387,39 @@ class CommandExecutor:
         if isinstance(assignment, ArrayElementAssignment):
             return f"{assignment.name}[{assignment.index}]"
         return getattr(assignment, 'name', '?')
+
+    def _run_null_command(self, node: 'SimpleCommand') -> int:
+        """Run a simple command that has NO command word — bash's null command.
+
+        Reached from the two shapes with no assignments to apply: a command
+        made only of redirections (`> f`) and one whose words all expanded to
+        nothing (`$(exit 5)`, `$empty`). The redirections are performed and
+        undone around this call, then the status comes from the single rule in
+        :mod:`psh.executor.null_command` — the last command substitution run
+        while expanding this command, unless a redirection targeted fd 0.
+
+        Backgrounded (`$(exit 5) &`), bash runs the null command in the child:
+        the foreground status is 0 and the JOB carries the null-command status
+        (`$(exit 5) & wait $!` -> 5). The child inherits the substitution
+        status recorded during this command's expansion, so it does not
+        re-expand anything.
+
+        Repro (C041): `psh -c '$(exit 5); echo rc=$?'` -> rc=5.
+        """
+        def run_null() -> int:
+            if node.redirects:
+                # A setup failure (`> ""`, `> adir`, `< missing`) prints the
+                # one diagnostic shape and fails with 1, like bash.
+                with self.io_manager.guarded_redirections(node.redirects) as ok:
+                    if not ok:
+                        return 1
+            return null_command_status(self.state, node.redirects)
+
+        if node.background:
+            command_string = " ".join(str(a) for a in node.args) or "null command"
+            return self.shell.process_launcher.launch_background_job(
+                run_null, command_string, command_string, is_shell_process=True)
+        return run_null()
 
     def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',
                      raw_assignments: List['RawAssignment']) -> int:
@@ -419,16 +453,10 @@ class CommandExecutor:
             # command_start_index needs to account for tokens consumed by assignments
             command_start_index = tokens_consumed
             if command_start_index >= len(node.words):
-                # No command to execute, but apply any redirections
-                # (e.g., ">file" should create/truncate the file). A setup
-                # failure (`> ""`, `> adir`) prints the one diagnostic shape
-                # and fails with 1, like bash.
-                if node.redirects:
-                    with self.io_manager.guarded_redirections(
-                            node.redirects) as ok:
-                        if not ok:
-                            return 1
-                return 0
+                # No command to execute: a NULL command. Its redirections are
+                # still performed (`>file` creates/truncates it) and its
+                # status follows the one null-command rule.
+                return self._run_null_command(node)
 
             # Create a sub-node for the command's own words only
             # (assignment prefixes sliced off). The string view
@@ -472,7 +500,7 @@ class CommandExecutor:
                 # prefix (F1).
                 if raw_assignments:
                     return self.assignments.apply_pure(node, raw_assignments)
-                return 0
+                return self._run_null_command(node)
 
             cmd_name = expanded_args[0]
             cmd_args = expanded_args[1:]

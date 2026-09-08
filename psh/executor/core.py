@@ -164,7 +164,8 @@ class ExecutorVisitor(ASTVisitor[int]):
         """Execute a sequence of statements — the shared mechanics behind the
         program root and every nested statement list.
 
-        Common to both: run pending signal traps at each statement boundary,
+        Common to both: stop before the statement when ``set -n`` (noexec) is
+        on, run pending signal traps at each statement boundary,
         restamp ``$LINENO`` from the statement's absolute source line, update
         ``$?``, and honour ``set -e`` (in script mode a triggering failure
         exits the process; otherwise it stops the sequence). Only failures
@@ -178,7 +179,31 @@ class ExecutorVisitor(ASTVisitor[int]):
 
         for statement in statements:
             try:
+                # Pending signal traps run FIRST, ahead of the noexec gate: a
+                # trap action that turns noexec on must gate the statement it
+                # precedes, not the one after it. With the gate first,
+                #   trap "set -n" USR1; echo before; kill -USR1 $$; touch m1
+                # left m1 behind — the statement had already passed the gate
+                # when the action ran (bash 5.3.15 creates nothing).
                 self.shell.trap_manager.run_pending_traps()
+
+                if self.state.options.get('noexec', False):
+                    # `set -n` (noexec): THE per-statement gate. From the
+                    # moment the option is on, every following statement is
+                    # read but not executed and the sequence's status is
+                    # success — bash makes the same check at the top of
+                    # execute_command_internal, so a flag flipped mid-list
+                    # stops the rest of that list, not just the next input
+                    # unit. Repro (C040):
+                    #   psh -c 'echo before; set -n; touch marker; echo after'
+                    # prints only `before` and leaves no marker (bash 5.3.15).
+                    # A shell at a PROMPT reaches this only through the
+                    # command line (`psh -i -n`, which bash also honours) or
+                    # in a child that left the interactive session: a runtime
+                    # `set -n` typed at the prompt is refused outright, so the
+                    # option never turns on (see apply_set_o_option).
+                    exit_status = 0
+                    break
                 # Track $LINENO: each statement carries its absolute source
                 # line (see ASTNode.line). Re-stamping per statement also
                 # restores LINENO after a function/source call returns here.

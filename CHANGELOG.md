@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.793.0 (2026-09-08) - noexec gates every statement; a bare substitution carries its status (Improvement Program 2026-09, Wave 1 slot 1.10)
+- P1 WRONG BEHAVIOUR (C040): `set -n` took effect only at the next input unit,
+  so everything after it on the same line still RAN — `echo before; set -n;
+  touch marker; echo after` created the marker in bash-silent territory. The
+  gate is now per STATEMENT, consulted in `_execute_sequence`, and it is
+  consulted AFTER pending signal traps are dispatched, so a trap action that
+  turns noexec on gates the statement it precedes rather than the one after
+  it. The inventory's "`-c` only (mid-string)" note was wrong: its check used
+  newline-separated input, where the per-unit fast path happened to answer
+  correctly — the defect was per-statement in all three input modes, and the
+  pins cover all three.
+- An interactive shell refuses `set -n` as bash does, and the refusal now has
+  the right SCOPE: it is an inherited internal option with one reader and one
+  dropper, dropped in the three async-compound child sites, so
+  `x=$(set -n; echo hi)` at a prompt still yields `hi` (it briefly yielded the
+  empty string) while `( set -n; touch f ) &` honours noexec like bash. The
+  shell's own `$-`, `set -o`, `$SHELLOPTS` and `$BASHOPTS` are byte-identical
+  to before, and no `set`/`shopt`/environment route can write the option.
+- P2 LOST STATUS (C041): a bare command substitution now carries its status —
+  `$(exit 5); echo $?` reports 5, the last substitution wins, and a
+  substitution whose redirections touch fd 0 answers 0 because bash forks it.
+  `"$(exit 5)"` is 127 in both shells (a quoted empty word is one field, not a
+  null command), and a backgrounded null command runs as a background job
+  whose child carries the status. The historic golden row that pinned the old
+  behaviour (`command_sub_exit_code`, `psh_only`) is repaired in place and
+  bash-compared — a pin that froze the defect is flipped, not superseded.
+- Ledger: W1-N58 (a null command's `{var}>` fd escapes into the parent shell
+  where bash forks), W1-N73 (`$-` inside a command substitution), W1-N77
+  (`set -o` inventory: psh lists `history` where bash lists
+  `interactive-comments`; `set -P`/`set -t` are accepted but never reflected)
+  and W1-N78 (`jobs` loses the original quoting of the job's command text)
+  registered, all pre-existing; a round-1 `jobs -l` spacing finding is kept as
+  W1-N79 marked UNCONFIRMED (one shape re-probed clean) rather than retired.
+- Verification: adversarial round 1 BOUNCE (a trap action that set noexec
+  still ran one statement; the interactive refusal leaked into command
+  substitutions — a regression against base), round 2 PASS at `08a1b673` after
+  the verifier tested the chosen root cause against the rejected alternative
+  and found the rejection sound. Two round-1 findings that did not survive a
+  real controlling pty were retired rather than registered.
+
 ## 0.792.0 (2026-09-08) - Process substitution keeps its data and its descriptors (Improvement Program 2026-09, Wave 1 slot 1.13)
 - P0 SILENT DATA LOSS (C082): `>(cmd)` was a named FIFO whose child gave up
   after a fixed 5 seconds — it opened `/dev/null`, unlinked the FIFO and exited

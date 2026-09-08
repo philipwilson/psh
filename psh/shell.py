@@ -160,7 +160,8 @@ class Shell:
         self._init_shell_components()
         self._select_parser(parent_shell)
         self._init_traps()
-        self._init_interactive(force_interactive)
+        self._init_interactive(force_interactive,
+                               top_level=parent_shell is None)
         if invocation is not None:
             self._apply_invocation(invocation)
 
@@ -320,8 +321,14 @@ class Shell:
         """
         self.trap_manager = TrapManager(self)
 
-    def _init_interactive(self, force_interactive: bool) -> None:
+    def _init_interactive(self, force_interactive: bool, *,
+                          top_level: bool = True) -> None:
         """Phase 7: interactive-family determination (mode flags ONLY).
+
+        ``top_level`` is False for a child shell (``Shell.for_subshell``).
+        The mode flags below are recomputed for every shell, child included;
+        ``interactive_session`` is the one fact a child INHERITS instead
+        (see its assignment for why).
 
         Before: every component exists; the mode flag options hold defaults
         or a parent's copies. After: the 'interactive', 'stdin_mode',
@@ -355,6 +362,18 @@ class Shell:
         interactive_family = force_interactive or (
             tty_stdin and not noninteractive_source)
         self.state.options['interactive'] = interactive_family
+
+        # Session identity, established ONCE and then inherited (bash's
+        # `interactive_shell`, which no fork recomputes). `interactive` above
+        # is recomputed by every child from ITS OWN stdin, so a command
+        # substitution — whose stdin psh protects — reports False there while
+        # bash still answers "interactive"; keying the `set -n` refusal on it
+        # made `x=$(set -n; echo hi)` silently yield the empty string at an
+        # interactive prompt. A child shell KEEPS the value it inherited
+        # through ShellState.clone_for_child; only an asynchronous compound
+        # child drops it (executor/child_policy.py#leave_interactive_session).
+        if top_level:
+            self.state.options['interactive_session'] = interactive_family
 
         # stdin_mode ('s' in $-): commands come from standard input. The
         # invocation config refines this (a forced -s keeps 's' even with -c,
@@ -394,7 +413,11 @@ class Shell:
             config.forced_stdin or config.source_kind is SourceKind.STDIN)
 
         for name, enable in config.option_transitions:
-            apply_set_o_option(self, name, enable)
+            # from_invocation: these ARE the command line. bash honours
+            # `-n` from the command line even for `bash -i` (it parses the
+            # flags before it decides the shell is interactive), while a
+            # runtime `set -n` at a prompt is refused (C040).
+            apply_set_o_option(self, name, enable, from_invocation=True)
 
         # bash drops -m when the terminal cannot support job control
         # ("cannot set terminal process group"; probes C5/E17: no `m` in $-).

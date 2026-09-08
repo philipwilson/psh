@@ -190,6 +190,9 @@ POST_ENDPOINT_SCANNED: list = [
     # str -> Optional[int] leaf that takes no Shell at all, so it is SCANNED
     # (and finds nothing) rather than declared out of scope.
     "psh/builtins/numeric.py",
+    # slot 1.10 (C041): the null-command status rule. Takes ShellState and a
+    # redirect list, never a full Shell — scanned so it stays that way.
+    "psh/executor/null_command.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —
