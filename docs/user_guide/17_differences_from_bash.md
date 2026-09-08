@@ -1001,14 +1001,14 @@ fi
 | Arithmetic expansion | Yes | Yes | Full support |
 | Brace expansion | Yes | Yes | Full support |
 | Process substitution | Yes | Yes | Full support |
-| Tilde expansion | Yes | Yes | Full support |
+| Tilde expansion | Yes | Yes | Full support for where a tilde expands — command words and PATTERN words alike (`case $HOME in ~)`, `[[ $HOME == ~ ]]`, `${v#~/}`), `~user`, `~+`/`~-`, and the assignment-value tilde after `=` and `:`. In a pattern word the expanded text matches literally, as in bash, so a `HOME` holding `*` or `[` is not a live pattern. One documented difference, in COMMAND words only: psh pathname-expands the result (`HOME='/a*b'; echo ~` globs; bash does not) |
 | Case modification | Yes | Yes | ${var^^}, ${var,,}, ${var~~} toggle, patterns, arrays; length-safe Unicode |
 | **Control Structures** |
 | if/then/else/fi | Yes | Yes | Full support |
 | while/until/do/done | Yes | Yes | Full support |
 | for/do/done | Yes | Yes | Full support |
 | C-style for loops | Yes | Yes | Full support |
-| case/esac | Yes | Yes | Full support |
+| case/esac | Yes | Yes | Each pattern of an item (every arm of a `|` alternation) gets the same word expansion bash gives it — tilde, parameter, command and arithmetic expansion — with quoted and tilde-expanded text matching literally. One documented difference: on a MULTI-FIELD pattern operand (`set -- a b; case a in ${x:-"$@"})`) bash matches the FIRST field and psh joins the fields into one pattern |
 | select | Yes | Yes | Full support |
 | Arithmetic commands (( )) | Yes | Yes | Full support |
 | Control structures in pipelines | Yes | Yes | Full support |

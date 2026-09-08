@@ -350,6 +350,8 @@ POST_ENDPOINT_MIGRATED: list = [
     # slot 1.10 (C041): new, fully annotated — kept under both disallow flags
     # by the pyproject override rather than joining the untyped default.
     "psh.executor.null_command",
+    # slot 1.11 (C042): the one pattern-word walker, born fully typed.
+    "psh.expansion.pattern_words",
 ]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline

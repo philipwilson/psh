@@ -59,10 +59,13 @@ CLAIM_TESTS = {
     'Arithmetic expansion': ('posix/test_posix_compliance.py', 'echo $((3 * 4))'),
     'Brace expansion': ('bash/test_bash_compatibility.py', 'echo {a,b,c}'),
     # Both directions: `>(cmd)` is half the claim, and an unmapped half is
-    # exactly what an over-claiming guard cannot see.
+    # exactly what an over-claiming guard cannot see (slot 1.13).
     'Process substitution': ('bash/test_bash_compatibility.py',
                             ('cat <(echo hello)', '> >(cat > got')),
-    'Tilde expansion': ('posix/test_posix_compliance.py', 'echo ~/test'),
+    # Slot 1.11 re-pointed this at the pattern-word evidence, which is where
+    # the tilde rule is actually pinned against bash.
+    'Tilde expansion': ('bash/test_pattern_word_tilde_conformance.py',
+                        'case $HOME in ~) echo tilde;; *) echo other;; esac'),
     'if/then/else/fi': ('posix/test_posix_compliance.py', 'if false; then echo no; else echo yes; fi'),
     'while/until/do/done': ('posix/test_posix_compliance.py', 'until [ $i -ge 2 ]'),
     'for/do/done': ('posix/test_posix_compliance.py', 'for word in hello world; do echo $word; done'),
