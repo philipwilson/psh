@@ -80,16 +80,20 @@ RULED_PROJECTIONS = {
     ("expansion/variable.py", "expand_string_variables"),
     # An assignment VALUE is one string: `v=${x:-"$@"}` assigns 'a b'.
     ("expansion/word_expander.py", "expand_assignment_value_word"),
-    # A `case` PATTERN word: psh joins to one glob pattern. NOT bash-demanded —
-    # bash matches the FIRST FIELD of a multi-field pattern operand. psh's join
-    # preserves base behaviour; the divergence is pinned in both directions by
+    # A PATTERN word — a `case` pattern and a `[[ == ]]`/`!=`/`=~` right
+    # operand — is one pattern string. Since slot 1.11 (C042) the two former
+    # rows here (`expansion/manager.py#expand_word_as_pattern` and
+    # `executor/enhanced_test_evaluator.py#_rhs_walk`) share ONE walker, so the
+    # projection moved with them; the SET is unchanged, not widened.
+    # The `case` half is NOT bash-demanded — bash matches the FIRST FIELD of a
+    # multi-field pattern operand. psh's join preserves base behaviour; the
+    # divergence is pinned in both directions by
     # test_subscript_keying_conformance.py::
     #     test_case_pattern_multifield_operand_divergence
     # and is successor-owned (first-field model).
-    ("expansion/manager.py", "expand_word_as_pattern"),
+    ("expansion/pattern_words.py", "_expansion_text"),
     # [[ ]] operands: `[[ ${x:-"$@"} == "a b" ]]` is true in bash.
     ("executor/enhanced_test_evaluator.py", "_operand_string"),
-    ("executor/enhanced_test_evaluator.py", "_rhs_walk"),
 }
 
 #: Symbols the 3.3 consolidation deleted. Reappearance = the str-subclass

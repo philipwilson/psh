@@ -11708,3 +11708,273 @@
   stdout: "immediate=0\njob=5\n"
   stderr: ""
   exit_code: 0
+- name: c042_case_pattern_bare_tilde
+  description: "C042: a case pattern tilde-expands, so bash's branch is the branch psh takes (HOME via env=, D14)"
+  env: {HOME: /h}
+  command: 'case $HOME in ~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_path
+  description: "C042: ~/x in a case pattern expands before matching"
+  env: {HOME: /h}
+  command: 'case $HOME/x in ~/x) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_in_alternation
+  description: "C042: every pattern of a case alternation is tilde-expanded, not just the first"
+  env: {HOME: /h}
+  command: 'case $HOME in foo|~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_plus_is_pwd
+  description: "C042: ~+ in a case pattern is $PWD"
+  env: {HOME: /h}
+  command: 'case $PWD in ~+) echo tildeplus;; *) echo other;; esac'
+  stdout: "tildeplus\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_value_tilde_after_equals
+  description: "C042: an assignment-shaped case pattern expands the tilde after its = (bash's value-tilde rule)"
+  env: {HOME: /h}
+  command: 'case "x=$HOME" in x=~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_quoted_tilde_stays_literal
+  description: "C042 control: a quoted tilde in a case pattern is a literal ~, so $HOME does not match it"
+  env: {HOME: /h}
+  command: "case $HOME in '~') echo lit;; *) echo other;; esac"
+  stdout: "other\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_mid_word_tilde_stays_literal
+  description: "C042 control: only a word-leading (or assignment-value) tilde expands in a case pattern"
+  env: {HOME: /h}
+  command: "case 'a~' in a~) echo lit;; *) echo other;; esac"
+  stdout: "lit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_pattern_value_tilde_after_equals
+  description: "C042: the [[ == ]] pattern operand gets the same assignment-value tilde rule as a case pattern"
+  env: {HOME: /h}
+  command: 'if [[ x=$HOME == x=~ ]]; then echo eq; else echo ne; fi'
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_regex_operand_expands_leading_tilde
+  description: "C042: bash 5.3.15 tilde-expands a word-leading ~ in the [[ =~ ]] regex operand too"
+  env: {HOME: /h}
+  command: 'if [[ $HOME/x =~ ~/x ]]; then echo eq; else echo ne; fi'
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_regex_operand_literal_tilde_no_longer_matches
+  description: "C042 control: with ~ expanded, the [[ =~ ]] regex no longer matches a literal ~ subject"
+  env: {HOME: /h}
+  command: "if [[ '~' =~ ~ ]]; then echo eq; else echo ne; fi"
+  stdout: "ne\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_param_remove_prefix_tilde_slash
+  description: "C042: the ${var#pat} pattern half tilde-expands — the substring actually removed is $HOME/"
+  env: {HOME: /h}
+  command: 'v=$HOME/x; echo "[${v#~/}]"'
+  stdout: "[x]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_param_substitute_tilde
+  description: "C042: ${var/pat/rep} tilde-expands the pattern half; the replacement half is a word and expands its own leading tilde"
+  env: {HOME: /h}
+  command: 'v=$HOME/x; echo "[${v/~/X}][${v/x/~}]"'
+  stdout: "[X/x][/h//h]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_ansi_c_operand_dollar_not_re_expanded
+  description: "C042 side-effect: consolidating the [[ ]] RHS walkers onto the pattern-word owner stopped a $'...' operand being run through the double-quote recipe, which expanded a $ the lexer had already resolved"
+  command: "b=Z; p='a$b'; if [[ $p == $'a$b' ]]; then echo eq; else echo ne; fi"
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_tilde_replacement_is_literal_glob
+  description: "C042 round-2 B1: a metacharacter-bearing HOME reaches a case pattern LITERALLY, so the near-miss subject takes the *) branch"
+  env: {HOME: "/a*b"}
+  command: 'case /aXb in ~) echo tilde;; *) echo other;; esac'
+  stdout: "other\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_dollar_home_stays_live
+  description: "C042 round-2 B1 control: bash quotes the result of TILDE expansion in a pattern word but NOT the result of parameter expansion, so $HOME still globs where ~ does not"
+  env: {HOME: "/a*b"}
+  command: 'case /aXb in $HOME) echo live;; *) echo other;; esac'
+  stdout: "live\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_bracket_home_matches_itself
+  description: "C042 round-2 B1: a HOME containing [ ] matches itself, which a live-pattern replacement would not"
+  env: {HOME: "/a[b]"}
+  command: 'case "/a[b]" in ~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_assignment_value_replacement_is_literal
+  description: "C042 round-2 B1: the assignment-shaped value tilde escapes only the replacement, leaving the x= prefix raw"
+  env: {HOME: "/a*b"}
+  command: 'case "x=/aXb" in x=~) echo tilde;; *) echo other;; esac; case "x=/a*b" in x=~) echo exact;; *) echo miss;; esac'
+  stdout: "other\nexact\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_source_glob_tail_stays_live
+  description: "C042 round-2 B1: only the tilde REPLACEMENT is literal — a glob the source word supplied after it still globs"
+  env: {HOME: /h/me}
+  command: 'case /h/me/abc in ~/a*) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_regex_operand_replacement_compiles
+  description: "C042 round-2 B2: a metacharacter HOME must not reach re.compile as regex source; bash matches with rc 0 and psh must not raise invalid regex"
+  env: {HOME: "/a[b"}
+  command: '[[ $HOME =~ ~ ]]; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_regex_operand_near_miss
+  description: "C042 round-2 B1: with the replacement re.escaped, a near-miss subject no longer matches the =~ operand"
+  env: {HOME: "/a.b"}
+  command: 'if [[ /aXb =~ ~ ]]; then echo eq; else echo ne; fi'
+  stdout: "ne\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_test_eq_replacement_is_literal
+  description: "C042 round-2 B1 row 13: the [[ == ~ ]] pattern operand escapes its replacement too (this cell was wrong at base AND at round-1 tip)"
+  env: {HOME: "/a*b"}
+  command: 'if [[ /aXb == ~ ]]; then echo eq; else echo ne; fi'
+  stdout: "ne\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r2_test_ne_replacement_is_literal
+  description: "C042 round-2 B1 row 14: the [[ != ~ ]] operand, the negated half of the same cell"
+  env: {HOME: "/a*b"}
+  command: 'if [[ /aXb != ~ ]]; then echo T; else echo F; fi'
+  stdout: "T\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_remainder_is_literal
+  description: "C042 round-3 V2-B1: bash's tilde WORD runs to the first / so a : is INSIDE it; the whole word is literal, remainder included. Round 2 left the remainder live and this row printed M"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:XX" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "o\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_matches_itself
+  description: "C042 round-3 V2-B1: with the remainder literal, the tilde extent matches the text it actually is"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:*" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "M\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_slash_bounds_literal_zone
+  description: "C042 round-3 V2-B1 control: the / bounds the tilde word, so a glob the source word supplied after it stays live"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:*/YY" in ~:*/*) echo M;; *) echo o;; esac'
+  stdout: "M\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_regex
+  description: "C042 round-3 V2-B1: the multi-part extent ~:$u takes the expansion verbatim and makes the whole tilde word literal, so the =~ operand matches the literal text"
+  env: {HOME: /h/me}
+  command: 'u=Z; [[ "/h/me:$u" =~ ~:$u ]]; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_derived_decoy_near_miss_and_live_half
+  description: "C042 round-3 V2-B2: a decoy derived against bash - the LIVE $HOME matches /aXb where the LITERAL ~ does not. Round 2's sed-built decoy could not tell the two apart"
+  env: {HOME: "/a*b"}
+  command: 'case /aXb in ~) echo tilde;; *) echo other;; esac; case /aXb in $HOME) echo live;; *) echo other;; esac'
+  stdout: "other\nlive\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_assignment_segment_near_miss
+  description: "C042 round-3 V2-B1: the assignment colon-segment escape, on a derived near-miss subject rather than only an exact one"
+  env: {HOME: "/a*b"}
+  command: 'case "x=a:/aXb:b" in x=a:~:b) echo M;; *) echo o;; esac; case "x=a:/a*b:b" in x=a:~:b) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_metachar_home
+  description: "C042 round-3 V2-B1: the multi-part tilde extent ~:$u with a metacharacter HOME - the collapse escapes the WHOLE tilde word, so the near-miss subject does not match and the exact one does"
+  env: {HOME: "/a*b"}
+  command: 'u=Z; case ''/aXb:$u'' in ~:$u) echo M;; *) echo o;; esac; case ''/a*b:$u'' in ~:$u) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_test_eq_metachar_home
+  description: "C042 round-3 V2-B1: the same collapse site through the [[ == ]] consumer"
+  env: {HOME: "/a[b]"}
+  command: 'u=Z; if [[ ''/ab:$u'' == ~:$u ]]; then echo M; else echo o; fi; if [[ ''/a[b]:$u'' == ~:$u ]]; then echo M; else echo o; fi'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_assignment_colon_exception_remainder_is_live
+  description: "C042 round-4 B1: in an ASSIGNMENT-shaped word bash's tilde word ends at : as well as /, so the remainder after the : stays LIVE - the exception the round-3 prose omitted"
+  env: {HOME: /h/me}
+  command: 'case "x=/h/me:XX" in x=~:*) echo M;; *) echo o;; esac; case "x=a:/h/me:XX" in x=a:~:*) echo M;; *) echo o;; esac; case "x+=/h/me:XX" in x+=~:*) echo M;; *) echo o;; esac'
+  stdout: "M\nM\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_no_assignment_remainder_is_literal_control
+  description: "C042 round-4 B1 control: the same shape WITHOUT an assignment prefix - the : is inside the tilde word and the * is literal, which is what makes the exception rows mean something"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:XX" in ~:*) echo M;; *) echo o;; esac; case "/h/me:*" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_four_subject_separation
+  description: "C042 round-4: o alone proves nothing - a shell that never expanded the tilde also prints o. Only M/o/o/o separates expanded-then-made-literal from never-expanded and from expanded-but-left-live"
+  env: {HOME: /h/me}
+  command: 'for s in "/h/me:*" "/h/me:XX" "~:*" "~:XX"; do case "$s" in ~:*) echo M;; *) echo o;; esac; done'
+  stdout: "M\no\no\no\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r4_multipart_regex_single_quoted_subject
+  description: "C042 round-4: the SINGLE-quoted companion to c042_r3_colon_extent_multipart_regex. The subject is the literal text /h/me:$u so it matches the verbatim tilde extent (rc 0); the double-quoted subject is /h/me:Z and does not (rc 1). Two different cells, pinned separately because they read almost alike"
+  env: {HOME: /h/me}
+  command: 'u=Z; [[ ''/h/me:$u'' =~ ~:$u ]]; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0

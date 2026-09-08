@@ -36,6 +36,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node. Substitution implements bash's measured pat_subst/match_upattern consumer layer (empty-subject single-shot, `*`-wrapped pre-test, end-position gate, end-never-scanned `//` loop — `parameter_expansion.py#_sub_machinery`/`#_any_match`, slot 3.1); removal is pure slice booleans |
 | `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
+| `pattern_words.py` | `expand_pattern_word()` - THE pattern-word rule for `case` patterns and `[[ == ]]`/`!=`/`=~` right operands |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards). (`normalize_bracket_expressions`/`_POSIX_CLASSES_PATHNAME` build no production output after W3 but are the PERMANENT `fnmatch` reference ORACLE — campaign Q3 ruling, NOT a deferred deletion — cross-checking `_component_matcher` in `test_unified_glob_converter.py`.) The ASCII class table itself is NOT owned here — it is `utils/posix_classes.py#POSIX_CLASSES`, a leaf below both this package and `core/locale_service.py`, which also reads it; this module owns only the slash-free `_POSIX_CLASSES_PATHNAME` variant derived from it |
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
 | `arithmetic/` | Arithmetic package: tokenizer/parser/evaluator (`evaluate_arithmetic()`); decomposed from `arithmetic.py` into `tokens.py`/`tokenizer.py`/`nodes.py`/`parser.py`/`evaluator.py`/`errors.py` |
@@ -116,6 +117,42 @@ Key behaviors controlled by Word AST structure:
   arguments and for/select items, NOT array initializers) expand unquoted
   tilde prefixes after the first `=` and after each `:`
   (`_expand_assignment_value_tildes()`)
+- **A pattern word expands a tilde WHERE a command word does, and the
+  replacement is LITERAL**: a `case` item pattern and a
+  `[[ == ]]`/`[[ != ]]`/`[[ =~ ]]` right operand are expanded by the ONE owner
+  `pattern_words.py#expand_pattern_word`, which drives the SAME placement state
+  machine as the field engine (`word_expander.py#tilde_walk_begin`,
+  `#tilde_apply_unquoted_literal`), so the two cannot drift on WHERE a tilde
+  expands. They differ on exactly one axis, and it is a parameter of that
+  machine, not a second copy of it: the owner passes its consumer's `escape`
+  (`glob_escape`, or `re.escape` for the regex operand), so the tilde WORD
+  matches literally while the rest of the word keeps its metacharacter power —
+  `TildeExpander.expand_escaped`. **Two boundaries, and the difference is
+  load-bearing**: the tilde PREFIX (`#prefix_end`) ends at the first `/` OR `:`
+  and decides what EXPANDS; the tilde WORD (`#word_end`) — what bash makes
+  LITERAL — ends at the first `/`, **except in an assignment-shaped word, where
+  `:` ends it too**, so there the remainder after a `:` stays LIVE. psh gets the
+  exception right by construction: `word_expander.py#_expand_assignment_value_tildes`
+  splits the value on `:` before calling `expand_escaped`, so that path only
+  ever sees colon-free segments. Three commands separate the cases (bash 5.3.15,
+  `HOME=/h/me`): `case '/h/me:XX' in ~:*)` prints `o` (the `*` is inside the
+  word, literal); `case '/h/me:*/YY' in ~:*/*)` prints `M` (the second `*` is
+  past the `/`, live); `case 'x=/h/me:XX' in x=~:*)` prints `M` (assignment
+  shaped, so the `:` ended the word and the `*` is live). Note `o` alone proves
+  nothing — a shell that never expanded the tilde also prints `o` — so the
+  pinned rows carry four subjects per pattern, see
+  `TildeExpander.word_end`. bash quotes
+  the result of tilde expansion in a pattern word and does NOT quote the result
+  of parameter expansion:
+  `env HOME='/a*b' bash -c "case /aXb in ~) echo T;; *) echo o;; esac"` prints
+  `o`, while the same case with `$HOME)` as the pattern prints `T`. Reproduce
+  the C042 defect the owner closed with
+  `env HOME=/h bash -c 'case $HOME in ~) echo tilde;; *) echo other;; esac'`
+  against a shell without it. The `${var#pat}` family is the string-shaped
+  sibling (`operands.py#_expand_pattern_operand`): the parser builds no Word
+  for those operands, so it cannot consume the owner; it glob-escapes its own
+  tilde prefix, and `tests/unit/expansion/test_pattern_words.py` compares the
+  two on metacharacter-bearing homes — the cells that discriminate.
 
 ### 3. ExpansionEvaluator
 
