@@ -62,8 +62,10 @@ class StdinBinding:
     forgets a binding a nested frame reassigns and keeps a stale one after the
     compound ends. Every shape where the two models disagree is a DECLARED
     divergence (ruled W1-N80) with its own two-sided pin: psh either delivers
-    input bash drops, or withholds the shell's own stdin from an async reader
-    and leaves it readable by the shell.
+    input bash drops, or withholds the shell's own stdin from an async reader —
+    where the shell's own next read still finds it, and where bash's matched
+    control (the same shape without the unrelated inner compound) withholds it
+    too.
 
     Reproduce (bash 5.3.15 vs psh, C022)::
 

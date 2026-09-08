@@ -493,3 +493,104 @@ class TestDeclaredDivergences:
             assert got == "[A]\n", (
                 f"[{mode}] {face}: psh should have left the shell's stdin "
                 f"alone, got {got!r}")
+
+    # --- the artifact argument, made executable ---------------------------
+    # The verifier's falsification attempt found shapes where the input psh
+    # withholds has NO surviving consumer (a here-string / procsub supplied to
+    # a FUNCTION CALL, whose only plausible reader is the backgrounded one).
+    # Each dissolves against its own control: bash's delivery is triggered by
+    # an unrelated inner compound, or by the fd NUMBER, and psh's answer equals
+    # bash's OWN answer for the semantically identical control.
+
+    @pytest.mark.parametrize("row,script,bash_out", [
+        ("C1_here_string_to_the_call",
+         'f() { { true; } < g; cat & wait; }; f <<< PAYLOAD', "PAYLOAD\n"),
+        ("C2_file_to_the_call",
+         'f() { { true; } < g; cat & wait; }; f < in', "P1\nP2\n"),
+        ("C5_procsub_to_the_call",
+         'f() { { true; } < g; cat & wait; }; f < <(printf "PS1\\nPS2\\n")',
+         "PS1\nPS2\n"),
+    ])
+    def test_a_stale_binding_reaches_a_function_calls_input(self, row, script,
+                                                            bash_out, tmp_path):
+        """bash's stale global lets the CALL's input reach the reader; psh's
+        binding ended with the inner compound, so it does not."""
+        script = 'printf "g1\\n" > g; printf "P1\\nP2\\n" > in; ' + script
+        for mode, got_bash, got_psh in self._rows(script, tmp_path):
+            assert got_bash == bash_out, (mode, row, got_bash)
+            assert got_psh == "", (mode, row, got_psh)
+
+    @pytest.mark.parametrize("row,script", [
+        # Drop the inner compound: bash withholds too.
+        ("C4_no_inner_compound", 'f() { cat & wait; }; f <<< PAYLOAD'),
+        # Make the inner one a SIMPLE command: bash withholds too.
+        ("C6_inner_is_a_simple_command",
+         'f() { true < g; cat & wait; }; f < <(printf "PS1\\nPS2\\n")'),
+        # Make the inner one redirect OUTPUT only: bash withholds too.
+        ("C7_inner_redirects_output_only",
+         'f() { { true; } > o; cat & wait; }; f <<< PAYLOAD'),
+    ])
+    def test_control_bash_itself_withholds_without_the_stale_setter(
+            self, row, script, tmp_path):
+        """The matched controls: change the construct that has nothing to do
+        with fd 0, and bash gives psh's answer. That is what makes the
+        divergence an ARTIFACT rather than a rule psh is breaking."""
+        script = 'printf "g1\\n" > g; ' + script
+        for mode, got_bash, got_psh in self._rows(script, tmp_path):
+            assert (got_bash, got_psh) == ("", ""), (mode, row, got_bash,
+                                                     got_psh)
+
+    @pytest.mark.parametrize("row,script,expected", [
+        # bash's answer flips on the fd NUMBER with identical semantics: a
+        # NAMED fd (allocated >= 10) is classified correctly by both shells.
+        ("F4_named_fd_control",
+         '{ cat & wait; } {v}< f; read x; echo "[read=$x]"', "[read=A]\n"),
+        # ...and with no stale setter at all, both shells keep the input.
+        ("A2_control_no_stale_setter",
+         'cat & wait; read x; echo "[read=$x]"', "[read=A]\n"),
+    ])
+    def test_control_both_shells_agree(self, row, script, expected, tmp_path):
+        script = 'printf "A\\nB\\n" > f; ' + script
+        for mode, got_bash, got_psh in self._rows(
+                script, tmp_path, modes=("-c", "file"), stdin_data="A\nB\n"):
+            assert (got_bash, got_psh) == (expected, expected), (
+                mode, row, got_bash, got_psh)
+
+    # --- the sharpest consequence: bash's reader eats the SCRIPT -----------
+
+    @pytest.mark.parametrize("row,script", [
+        ("face_f_numbered_fd", '{ cat & wait; } 3< f\necho END'),
+        ("face_a_stale_binding", '{ true; } < f; cat & wait\necho END'),
+    ])
+    def test_bash_reader_eats_the_script_when_it_arrives_on_a_pipe(
+            self, row, script, tmp_path):
+        """With the script on a PIPE, bash's misclassified binding hands the
+        background reader the shell's own command source: the next LINE is
+        printed as data and never executed. psh executes it.
+
+        The pipe matters — with the script on a seekable FILE bash re-reads it
+        and `END` still runs (pinned by the control below).
+        """
+        d = tmp_path / f"pipe-{row}"
+        d.mkdir()
+        (d / "f").write_text("A\nB\n")
+        payload = script + "\n"
+        b = run_bash([], stdin_data=payload, stdin_mode="pipe", cwd=str(d))
+        p = run_psh([], stdin_data=payload, stdin_mode="pipe", cwd=str(d))
+        assert is_comparable(b) and is_comparable(p), (b, p)
+        _check_no_host_flake(p, "stdin-pipe", script, "psh")
+        assert b.stdout == "echo END\n", (
+            f"{row}: bash 5.3.15 no longer eats the script line: {b.stdout!r}")
+        assert p.stdout == "END\n", f"{row}: psh gave {p.stdout!r}"
+
+    def test_control_script_on_a_pipe_without_the_stale_binding(self, tmp_path):
+        """CONTROL: no compound supplies fd 0, so both shells execute the next
+        line — the script-eating is the misclassification's doing, not stdin
+        mode's."""
+        d = tmp_path / "pipe-ctl"
+        d.mkdir()
+        payload = "cat & wait\necho END\n"
+        b = run_bash([], stdin_data=payload, stdin_mode="pipe", cwd=str(d))
+        p = run_psh([], stdin_data=payload, stdin_mode="pipe", cwd=str(d))
+        assert is_comparable(b) and is_comparable(p), (b, p)
+        assert (b.stdout, p.stdout) == ("END\n", "END\n"), (b.stdout, p.stdout)

@@ -775,8 +775,9 @@ exec 3< file; { cat & wait; } 0<&3-          # psh: the file     bash: (nothing)
 same in both shells — bash records a subshell's own redirections.)
 
 and psh withholds the shell's *own* input from a background reader in two shapes
-where bash hands it over — the bytes are not lost, they stay on the shell's
-standard input for its own next read:
+where bash hands it over. psh does not give those bytes to the async reader;
+they stay on the shell's standard input, where the shell's own next read still
+finds them:
 
 ```bash
 printf 'A\nB\n' | psh -c '{ true; } < f; cat & wait; read x; echo "[$x]"'
@@ -787,6 +788,38 @@ printf 'A\nB\n' | psh -c '{ cat & wait; } 3< f; read x; echo "[$x]"'
 # same split: bash treats `3< f` as a standard-input redirection, psh follows the
 # fd that was actually rebound
 ```
+
+The first shape needs the two commands to share one *top-level* command — a
+`;` between them — and then it applies to `-c`, script files and standard input
+alike; written on separate lines it differs only under `-c`, because bash clears
+the flag once per command it reads.
+
+When the shell reads nothing afterwards, the withheld bytes are simply unread —
+and they are equally unread in bash's own matched control. bash's delivery turns
+on constructs that have nothing to do with the frame's fd 0:
+
+```bash
+f() { { true; } < g; cat & wait; }; f <<< P    # bash: P    psh: (nothing)
+f() { cat & wait; }; f <<< P                   # bash and psh: (nothing)
+f() { { true; } > o; cat & wait; }; f <<< P    # bash and psh: (nothing)
+{ cat & wait; } {v}< f; read x                 # bash and psh: the shell reads A
+```
+
+Dropping the unrelated `{ true; } < g`, or making it redirect output instead,
+gives bash psh's answer — and for the third shape bash's answer flips on the
+descriptor *number* alone.
+
+The same misclassification has a sharper consequence when the script itself
+arrives on a pipe: bash's background reader is handed the shell's command
+source and eats the next line as data.
+
+```bash
+printf '{ cat & wait; } 3< f\necho END\n' | psh    # psh:  END        (executed)
+printf '{ cat & wait; } 3< f\necho END\n' | bash   # bash: echo END   (printed, never run)
+```
+
+(With the script in a *file* rather than a pipe, bash re-reads it and `END`
+still runs; only the shell's own standard input is consumed.)
 
 ### Script on Standard Input
 
