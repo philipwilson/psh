@@ -203,8 +203,11 @@ ARMS = [
         "                # A setup failure (`> \"\"`, `> adir`, `< missing`) "
         "prints the\n"
         "                # one diagnostic shape and fails with 1, like bash.\n"
-        "                with self.io_manager.guarded_redirections("
-        "node.redirects) as ok:\n"
+        "                # compound=False: a null command is a SIMPLE command whose\n"
+        "                # words vanished, not a compound region, so its fd-0 binding\n"
+        "                # must not be reported as one to a background reader.\n"
+        "                with self.io_manager.guarded_redirections(\n"
+        "                        node.redirects, compound=False) as ok:\n"
         "                    if not ok:\n"
         "                        return 1\n",
         "            pass  # MUTATION: the redirections are not performed\n",
