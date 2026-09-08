@@ -131,12 +131,13 @@ class TestArgumentErrors:
 
     Hard argument errors abort a NON-INTERACTIVE shell (break/continue/
     return are POSIX special builtins), so these run psh -c in a
-    subprocess where script-mode abort applies.
+    subprocess where script-mode abort applies. Statuses follow the one
+    usage-error family in psh/core/internal_errors.py (bash 5.3.15).
     """
 
-    def test_break_non_numeric_aborts_script(self):
+    def test_break_non_numeric_exits_with_two(self):
         r = run_psh('for i in 1 2; do break abc; done; echo rc=$?')
-        assert r.returncode == 128
+        assert r.returncode == 2
         assert r.stdout == ''
         assert 'numeric argument required' in r.stderr
 

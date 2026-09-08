@@ -324,18 +324,20 @@ class TestBreakContinuePosixSilence:
 
 
 class TestTooManyArgumentsDiscardFamily:
-    """`return 3 4` / `break 1 2` / `continue 1 2` join the delivered
-    exit/shift too-many-arguments DISCARD family (bash 5.2 probe): report,
-    kill the current input unit, do NOT exit — next line runs with $?=1,
-    in BOTH modes. RED-ON-BASE: base psh sys.exit'd the whole script."""
+    """`return 3 4` / `break 1 2` / `continue 1 2` join the exit/shift
+    too-many-arguments DISCARD cell of the ONE usage-error family
+    (psh/core/internal_errors.py#special_builtin_usage_discard): report, kill
+    the current input LINE, do NOT exit — the next line runs with $? = 2 on
+    bash 5.3.15, in BOTH modes.  (The 5.2 series left 1 there; re-probed
+    2026-09-07 in -c, script-file and stdin modes.)"""
 
     @pytest.mark.parametrize("mode", ["default", "posix"])
     def test_return_too_many_next_line_runs(self, mode, tmp_path):
         pre = "set -o posix\n" if mode == "posix" else ""
         rc, out, err = run_script(
             pre + "return 3 4; echo same\necho rc=$?\n", tmp_path)
-        assert "same" not in out          # rest of the unit dies
-        assert out.endswith("rc=1\n")     # next line runs, $? = 1
+        assert "same" not in out          # rest of the line dies
+        assert out.endswith("rc=2\n")     # next line runs, $? = 2
         assert "too many arguments" in err
         assert rc == 0
 
@@ -345,7 +347,7 @@ class TestTooManyArgumentsDiscardFamily:
         rc, out, err = run_script(
             pre + "f() { return 3 4; echo in; }\nf\necho rc=$?\n", tmp_path)
         assert "in" not in out
-        assert out.endswith("rc=1\n")
+        assert out.endswith("rc=2\n")
         assert rc == 0
 
     @pytest.mark.parametrize("word", ["break", "continue"])
@@ -354,17 +356,20 @@ class TestTooManyArgumentsDiscardFamily:
             f"for i in 1 2; do {word} 1 2; echo in; done\necho rc=$?\n",
             tmp_path)
         assert "in" not in out
-        assert out.endswith("rc=1\n")
+        assert out.endswith("rc=2\n")
         assert "too many arguments" in err
         assert rc == 0
 
-    def test_break_non_numeric_still_exits_128(self, tmp_path):
-        """Discriminator: `break x` inside a loop remains a HARD exit 128
-        (bash, both modes) — only too-many-args joined the discard."""
+    def test_break_non_numeric_exits_the_shell_with_two(self, tmp_path):
+        """Discriminator: `break x` inside a loop is the OTHER cell — a HARD
+        shell exit (bash, both modes), not a line discard.  bash 5.3.15 exits
+        with the family status 2 where the 5.2 series exited 128.
+        Reproduce: bash -c 'for i in 1; do break x; done; echo survived'.
+        """
         rc, out, err = run_script(
             "for i in 1 2; do break x; done\necho survived\n", tmp_path)
         assert "survived" not in out
-        assert rc == 128
+        assert rc == 2
         assert "numeric argument required" in err
 
 

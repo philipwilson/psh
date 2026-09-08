@@ -35,12 +35,16 @@ from .exceptions import (
     UnboundVariableError,
 )
 from .internal_errors import (
+    USAGE_ERROR_STATUS,
     arith_assignment_discard,
     fatal_expansion_status,
     report_internal_defect,
     special_builtin_stops_at_first_bad_identifier,
     special_builtin_usage_discard,
     special_builtin_usage_exit,
+    special_builtin_usage_exit_shell,
+    special_builtin_usage_status,
+    usage_discard_child_status,
 )
 from .job_state import (
     JobSpecOutcome,
@@ -91,9 +95,13 @@ __all__ = [
     'report_internal_defect',
     'fatal_expansion_status',
     'arith_assignment_discard',
+    'USAGE_ERROR_STATUS',
     'special_builtin_stops_at_first_bad_identifier',
     'special_builtin_usage_discard',
     'special_builtin_usage_exit',
+    'special_builtin_usage_exit_shell',
+    'special_builtin_usage_status',
+    'usage_discard_child_status',
     # Traps
     'TrapManager',
     # Assignment utilities

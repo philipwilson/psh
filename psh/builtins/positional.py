@@ -1,8 +1,9 @@
 """Positional parameter builtins (shift, getopts)."""
 from typing import TYPE_CHECKING, List
 
-from ..core import special_builtin_usage_discard
+from ..core import special_builtin_usage_discard, special_builtin_usage_status
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -24,19 +25,23 @@ class ShiftBuiltin(Builtin):
 
         if len(args) > 1:
             # bash validates the FIRST operand before the operand count:
-            # `shift x y` reports "x: numeric argument required" (rc 1, the
-            # shell continues), while `shift 1 2` — a VALID count with an extra
-            # operand — is "too many arguments", a usage error that discards
-            # the rest of the current input unit (both modes; probe-verified
-            # against bash 5.2).
-            try:
-                n = int(args[1])
-            except ValueError:
+            # `shift x y` reports "x: numeric argument required" and the shell
+            # continues on the same line, while `shift 1 2` — a VALID count
+            # with an extra operand — is "too many arguments", which discards
+            # the rest of the current input unit. Two cells of the one
+            # usage-error family in core/internal_errors.py; neither status is
+            # spelled here.
+            # legal_number, not int(): `shift 1_0` / `shift 99999999999999999999`
+            # are REJECTED operands in bash, not counts (the second used to
+            # reach the range check and report "shift count out of range").
+            count = legal_number(args[1])
+            if count is None:
                 self.error(f"{args[1]}: numeric argument required", shell)
-                return 1
+                special_builtin_usage_status()
+            n = count
             if len(args) > 2:
                 self.error("too many arguments", shell)
-                special_builtin_usage_discard(shell.state, 1)
+                special_builtin_usage_discard(shell.state)
 
         # Validate shift count (bash: "N: shift count out of range")
         if n < 0:
@@ -49,8 +54,10 @@ class ShiftBuiltin(Builtin):
             # POSIX: return failure if n > $#. bash is silent in default
             # mode but reports the range error in POSIX mode — with the
             # count when one was given (`shift: 5: shift count out of
-            # range`), without it for a bare `shift` (probe-verified,
-            # bash 5.2, tmp/posixexit). No exit either way (rc 1).
+            # range`), without it for a bare `shift`. Status 1 and no exit
+            # either way: this is NOT a usage error, so it does not take the
+            # family status above. Re-probed against bash 5.3.15 in -c,
+            # script-file and stdin modes; unchanged from 5.2.
             if shell.state.options.get('posix'):
                 prefix = f"{args[1]}: " if len(args) > 1 else ""
                 self.error(f"{prefix}shift count out of range", shell)

@@ -6,12 +6,17 @@ and they compose in pipelines and && / || lists. psh matches that by parsing
 them as plain simple commands and implementing the control transfer here,
 via the LoopBreak/LoopContinue exceptions the loop executors catch.
 """
-import sys
 from abc import abstractmethod
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
-from ..core import LoopBreak, LoopContinue, special_builtin_usage_discard
+from ..core import (
+    LoopBreak,
+    LoopContinue,
+    special_builtin_usage_discard,
+    special_builtin_usage_exit_shell,
+)
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -37,17 +42,16 @@ class LoopControlBuiltin(Builtin):
         depth = self._loop_depth(shell)
         if depth == 0:
             # bash: warn and continue with status 0 (the argument is not
-            # even validated when there is no enclosing loop). In POSIX
-            # mode the no-op is SILENT — bash prints nothing (matrix doc
-            # row, probe-verified vs bash 5.2).
+            # even validated when there is no enclosing loop, so `break abc`
+            # here is NOT the bad-count cell). In POSIX mode the no-op is
+            # SILENT — bash prints nothing. Both re-probed against bash
+            # 5.3.15 in -c, script-file and stdin modes; unchanged from 5.2.
             if not shell.state.options.get('posix'):
                 self.error(
                     "only meaningful in a `for', `while', or `until' loop",
                     shell)
             return 0
         level = self._resolve_level(args, shell)
-        if level is None:
-            return shell.state.last_exit_code
         if level == 0:
             # Out-of-range (break 0/negative): bash exits ALL enclosing
             # loops with status 1 (error already reported by the resolver).
@@ -60,34 +64,38 @@ class LoopControlBuiltin(Builtin):
     def _transfer(self, level: int) -> None:
         """Raise the control-flow exception for a validated positive level."""
 
-    def _resolve_level(self, args: List[str], shell: 'Shell') -> Optional[int]:
+    def _resolve_level(self, args: List[str], shell: 'Shell') -> int:
         """Resolve the level argument at runtime (bash semantics).
 
-        Returns the positive level to act on; 0 for the non-positive
+        Returns the positive level to act on, or 0 for the non-positive
         "loop count out of range" case (error already reported, caller exits
-        the loop); or None when the command must NOT transfer control
-        because a non-numeric argument was reported (a non-interactive
-        shell aborts via sys.exit 128, like bash). The too-many-arguments
-        case never returns: it discards the current input unit.
+        the loop). The two BAD-ARGUMENT cells never return: both belong to
+        the ONE usage-error family in core/internal_errors.py and take
+        DIFFERENT outcomes of it — a valid count with extras discards the
+        input line, while a non-numeric count ends the shell (and, in an
+        interactive shell, discards the line). Neither status is spelled here.
         """
         if len(args) == 1:
             return 1
         if len(args) > 2:
-            # Same too-many-arguments family as `exit 7 8` / `shift 1 2` /
-            # `return 3 4` (probe-verified, bash 5.2, tmp/posixexit):
-            # report and DISCARD the current input unit — the loop dies,
-            # the shell does NOT exit, and the next input line runs with
-            # $? = 1, in default AND POSIX mode. (The old sys.exit(1) path
-            # made a non-interactive psh exit — bash survives.)
+            # Same too-many-arguments cell as `exit 7 8` / `shift 1 2` /
+            # `return 3 4`: report and DISCARD the current input unit — the
+            # loop dies, the shell does NOT exit, and the next input line runs
+            # with $? = 2, in default AND POSIX mode.
+            # Reproduce: printf 'for i in 1; do break 1 2; done\necho rc=$?\n'
             self.error("too many arguments", shell)
-            special_builtin_usage_discard(shell.state, 1)
+            special_builtin_usage_discard(shell.state)
 
         arg = args[1]
-        try:
-            level = int(arg)
-        except ValueError:
-            self._report_arg_error(f"{arg}: numeric argument required", 128, shell)
-            return None
+        # legal_number, not int(): `break 1_0` / `break \u0661` / a count past
+        # int64 are REJECTED operands in bash, so they take the bad-count cell
+        # rather than breaking out of every loop.
+        level = legal_number(arg)
+        if level is None:
+            # Bad-count cell: bash 5.3.15 EXITS the shell here, in every input
+            # mode and even under a `|| echo caught` guard.
+            self.error(f"{arg}: numeric argument required", shell)
+            special_builtin_usage_exit_shell(shell)
 
         if level <= 0:
             # bash: report "loop count out of range" and (the caller then)
@@ -95,16 +103,6 @@ class LoopControlBuiltin(Builtin):
             self.error(f"{arg}: loop count out of range", shell)
             return 0
         return level
-
-    def _report_arg_error(self, message: str, status: int, shell: 'Shell') -> None:
-        """Report a non-numeric-argument error. A non-interactive shell
-        aborts with the given status — bash 5.2 exits 128 on `break x`
-        inside a loop, in default AND POSIX mode (probe tmp/posixexit) —
-        while an interactive shell records the status and continues."""
-        self.error(message, shell)
-        shell.state.last_exit_code = status
-        if shell.state.is_script_mode:
-            sys.exit(status)
 
 
 @builtin
