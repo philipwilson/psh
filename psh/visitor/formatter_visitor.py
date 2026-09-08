@@ -45,7 +45,6 @@ from ..ast_nodes import (
     UnaryTestExpression,
     UntilLoop,
     VariableExpansion,
-    # Control structures
     WhileLoop,
     Word,
 )
@@ -117,31 +116,16 @@ class FormatterVisitor(ASTVisitor[str]):
             self.level = saved
 
     @staticmethod
-    def _needs_brace_disambiguation(part, next_part) -> bool:
-        """Whether a bare ``$name`` must be written ``${name}`` to round-trip.
-
-        ``$x`` immediately followed by an UNQUOTED name-continuation char
-        (``${x}there`` parsed to VariableExpansion(x) + literal "there") would
-        re-emit as ``$xthere`` — a different variable. A following QUOTE or
-        ``$`` already delimits the name, so braces are needed only before an
-        unquoted literal that starts with ``[A-Za-z0-9_]``.
-        """
-        if not (isinstance(part, ExpansionPart)
-                and isinstance(part.expansion, VariableExpansion)):
-            return False
-        if not isinstance(next_part, LiteralPart) or getattr(next_part, 'quoted', False):
-            return False
-        return bool(next_part.text) and (next_part.text[0].isalnum()
-                                         or next_part.text[0] == '_')
-
-    @staticmethod
     def _format_word(word) -> str:
         """Format a Word by reconstructing from its parts with quoting.
 
         Groups consecutive parts that share the same quote context so
         that ``"$HOME/bin"`` is emitted as one quoted region rather than
-        ``"$HOME""/bin"``. Preserves brace-disambiguation (``${x}there``) and
-        re-escapes double-quoted literals so the output re-parses identically.
+        ``"$HOME""/bin"``, and re-escapes double-quoted literals so the output
+        re-parses identically. Each part's source text comes from
+        ``Word.part_source_text`` — the single spelling authority, which keeps
+        the braces the source wrote (``${x}there``, ``${v}{1,2}``) and leaves a
+        bare ``$v{1,2}`` bare.
         """
         parts = word.parts
         # Group consecutive parts by their quote context, keeping each part so
@@ -149,11 +133,7 @@ class FormatterVisitor(ASTVisitor[str]):
         groups: list = []  # [(quote_char_or_None, [(part, text), ...])]
         for i, part in enumerate(parts):
             qc = getattr(part, 'quote_char', None) if getattr(part, 'quoted', False) else None
-            next_part = parts[i + 1] if i + 1 < len(parts) else None
-            if FormatterVisitor._needs_brace_disambiguation(part, next_part):
-                text = '${' + part.expansion.name + '}'
-            else:
-                text = str(part)
+            text = word.part_source_text(i)
             if groups and groups[-1][0] == qc:
                 groups[-1][1].append((part, text))
             else:

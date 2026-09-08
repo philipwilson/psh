@@ -241,8 +241,11 @@ def test_formatted_output_reparses(src):
     ("[[ -n '$x' ]]", "[[ -n '$x' ]]"),
     # G1: empty unary operand re-quotes ([[ -z  ]] would be a parse error)
     ('[[ -z "" ]]', '[[ -z "" ]]'),
-    # G1: here-string composite preserves per-part quoting
-    ('cat <<< foo$v"dq"', 'foo$v"dq"'),
+    # G1: here-string composite preserves per-part quoting. The bare `$v` now
+    # carries braces: the renderer drops the quote that separated it from the
+    # literal `dq` (display_text drops quotes; _format_word merges same-quote
+    # regions), so `foo$vdq` would name a different variable.
+    ('cat <<< foo$v"dq"', 'foo${v}"dq"'),
 ])
 def test_format_emits_expected_token(src, expected_substr):
     assert expected_substr in _fmt(src)

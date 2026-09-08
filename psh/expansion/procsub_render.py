@@ -184,7 +184,7 @@ def _render_word(word: 'Word') -> str:
     covered subset keeps its raw spelling — same residual rule as the outer.
     """
     out = []
-    for part in word.parts:
+    for i, part in enumerate(word.parts):
         if (isinstance(part, ExpansionPart)
                 and isinstance(part.expansion, ProcessSubstitution)
                 and part.expansion.program is not None):
@@ -193,6 +193,6 @@ def _render_word(word: 'Word') -> str:
                 frame = '<' if part.expansion.direction == 'in' else '>'
                 out.append(f'{frame}({rendered})')
                 continue
-        out.append(str(part))
+        out.append(word.part_source_text(i))
     return ''.join(out)
 

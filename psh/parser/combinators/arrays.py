@@ -298,7 +298,7 @@ class ArrayParsers:
                     quote_char=getattr(first, 'quote_char', None)))
             value_parts.extend(parts[1:])
         word = Word(parts=value_parts)
-        return word, ''.join(str(part) for part in value_parts)
+        return word, word.display_text()
 
     def _collect_element_value(self, tokens: List[Token], pos: int, tail: str):
         """Collect literal tail plus adjacent value tokens into a Word."""
@@ -320,4 +320,5 @@ class ArrayParsers:
             parts.extend(inner.parts)
             pos = word_result.position
 
-        return Word(parts=parts), ''.join(str(part) for part in parts), pos
+        word = Word(parts=parts)
+        return word, word.display_text(), pos

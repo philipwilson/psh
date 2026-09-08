@@ -17,21 +17,35 @@ This file keeps the harness's assertion as a permanent invariant:
    words]`` — guarding against anyone re-introducing a stored/shadowed
    args list.
 2. A frozen golden table pins the flattening RULE itself (quote
-   removal, expansion rendering, ``${y}`` -> ``$y`` normalization,
-   array-init flat strings), since args bytes feed --debug-ast, the
-   analysis visitors, and assignment-name extraction.
+   removal, expansion rendering, array-init flat strings), since args
+   bytes feed --debug-ast, the analysis visitors, and assignment-name
+   extraction.
 
-Note: the combinator parser previously stored slightly different bytes
-for a few shapes (``${y}`` stayed braced via format_token_value); since
-the property, both parsers share the Word-derived view. Execution
-semantics always came from ``words``, so this was tooling-visible only.
+The rule renders a ``$name`` through the single brace authority
+``ast_nodes.words.variable_expansion_text``, so the SOURCE spelling
+survives: ``${y}`` stays ``${y}`` and a bare ``$y`` stays bare. It used to
+normalize every braced simple variable to the bare form, which is lossy —
+``a${x}b`` flattened to ``a$xb``, naming a different variable — so the two
+goldens that froze that normalization were re-pinned to the source
+spelling. Execution semantics always came from ``words``.
+
+Note: the combinator parser previously stored slightly different bytes for
+a few shapes (``${y}`` stayed braced via format_token_value); since the
+property, both parsers share the Word-derived view.
 """
 
 import dataclasses
 
 import pytest
 
-from psh.ast_nodes import ASTNode, SimpleCommand
+from psh.ast_nodes import (
+    ASTNode,
+    ExpansionPart,
+    SimpleCommand,
+    VariableExpansion,
+    next_rendered_part,
+    variable_expansion_text,
+)
 from psh.lexer import tokenize
 
 # Representative battery over the word shapes the flattening rule must
@@ -42,6 +56,8 @@ BATTERY = [
     'echo "a b" c',
     "echo 'lit $x'",
     'echo $x ${x} ${x:-def} ${#x} ${x}b a${x}b',
+    'echo $1x ${1}x $v{1,2} ${v}{1,2}',
+    'echo $v""{1,2} "$v"{1,2} $v""x',
     'echo "a$x b" "a${y}b"',
     'echo $(date) `pwd` $((1 + 2)) pre$(cmd)post',
     'cat <(echo a) >(cat)',
@@ -75,8 +91,16 @@ BATTERY = [
 GOLDEN_FIRST_COMMAND_ARGS = {
     'echo "a b" c': ['echo', 'a b', 'c'],
     "echo 'lit $x'": ['echo', 'lit $x'],
-    # braced simple variables normalize to bare form in the args view
-    'echo ${x} ${x:-def} a${x}b': ['echo', '$x', '${x:-def}', 'a$xb'],
+    # the source's own spelling survives: braced stays braced (dropping the
+    # braces in `a${x}b` would name `xb`), bare stays bare
+    'echo ${x} ${x:-def} a${x}b': ['echo', '${x}', '${x:-def}', 'a${x}b'],
+    'echo $xb $v{1,2} ${v}{1,2}': ['echo', '$xb', '$v{1,2}', '${v}{1,2}'],
+    # a separator the flattening drops (an empty part, or a quote boundary)
+    # already stopped the fusion, so the braces have to carry it
+    'echo $v""{1,2} "$v"{1,2} $v""x':
+        ['echo', '${v}{1,2}', '${v}{1,2}', '${v}x'],
+    # a bare positional before a name char must be braced to stay `$1`
+    'echo $1x': ['echo', '${1}x'],
     'echo "a$x b"': ['echo', 'a$x b'],
     'echo $(date) `pwd` $((1 + 2))': ['echo', '$(date)', '`pwd`', '$((1 + 2))'],
     # array initialization stays one flat argument (consumed by
@@ -101,7 +125,27 @@ def _walk(node, acc):
 
 
 def _derived(words):
-    return [''.join(str(part) for part in word.parts) for word in words]
+    """The flattening rule, restated: each part's source text, joined.
+
+    A ``$name`` part is spelled by the single brace authority, asked about the
+    neighbour ``next_rendered_part`` names — the next part that actually PRINTS,
+    and whether the source separated them with something a rendering may drop.
+    Both answers are TAKEN from the authority module, never recomputed here, so
+    this restates only the JOIN and cannot fork the spelling rule.
+    """
+    out = []
+    for word in words:
+        chunks = []
+        for i, part in enumerate(word.parts):
+            if (isinstance(part, ExpansionPart)
+                    and isinstance(part.expansion, VariableExpansion)):
+                nxt, separated = next_rendered_part(word.parts, i)
+                chunks.append(
+                    variable_expansion_text(part.expansion, nxt, separated))
+            else:
+                chunks.append(str(part))
+        out.append(''.join(chunks))
+    return out
 
 
 def _rd_parse(source):
