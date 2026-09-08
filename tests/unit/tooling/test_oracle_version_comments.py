@@ -50,7 +50,7 @@ CLAIM = re.compile(r"bash 5\.2")
 VARIANT = re.compile(r"(?i)bash[ -]5\.2\b|5\.2\.26\b")
 
 #: Sum of BASELINE — 599 at BASE_SHA; this package adds none.
-BASELINE_TOTAL = 595
+BASELINE_TOTAL = 594
 #: file -> matching LINES (== `git grep -c`). MAY ONLY DECREASE (see docstring).
 BASELINE = {
     "psh/builtins/core.py": 1,
@@ -246,7 +246,6 @@ BASELINE = {
     "tests/integration/redirection/test_here_string_word_quoting.py": 1,
     "tests/integration/redirection/test_heredoc_shared_cursor_r1.py": 1,
     "tests/integration/redirection/test_noclobber_targets.py": 1,
-    "tests/integration/redirection/test_process_sub_closed_fds.py": 1,
     "tests/integration/redirection/test_process_sub_embedded.py": 1,
     "tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py": 1,
     "tests/integration/redirection/test_redirect_failure_paths.py": 2,

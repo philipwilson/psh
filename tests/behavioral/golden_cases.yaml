@@ -11546,3 +11546,67 @@
   stdout: "A\nstill-hashed=0\n"
   stderr: ""
   exit_code: 0
+
+# PROCESS-SUBSTITUTION LIFETIME (C081, C082, C091, slot 1.13)
+# Both directions are one pipe named /dev/fd/N on every platform -- no FIFO,
+# no give-up timer -- and a loop of substitutions returns the shell's
+# descriptor table to exactly where it started.
+
+- name: c081_write_side_substitution_names_a_dev_fd_path
+  description: "C081: >(cmd) hands out /dev/fd/N (was a $TMPDIR FIFO path on every platform)"
+  command: |
+    p=>(true)
+    case $p in /dev/fd/*) echo devfd;; *) echo "other:$p";; esac
+  stdout: "devfd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c081_read_side_substitution_names_a_dev_fd_path
+  description: "C081 control: <(cmd) already named /dev/fd/N and still does"
+  command: |
+    q=<(true)
+    case $q in /dev/fd/*) echo devfd;; *) echo "other:$q";; esac
+  stdout: "devfd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c082_write_side_body_reading_late_still_receives_the_bytes
+  description: "C082: a >(cmd) body that sleeps before reading gets every byte, not /dev/null"
+  command: |
+    echo hi > >(sleep 1; cat > got; : > flag)
+    i=0; until [ -e flag ] || [ "$i" -ge 120 ]; do sleep 0.05; i=$((i+1)); done
+    cat got
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c091_read_side_substitution_loop_leaves_the_fd_table_unchanged
+  description: "C091: 20 <(cmd) substitutions leave the shell's own descriptor count where it started"
+  command: |
+    before=$(ls /dev/fd | wc -l)
+    i=0; while [ "$i" -lt 20 ]; do cat <(echo x) > /dev/null; i=$((i+1)); done
+    after=$(ls /dev/fd | wc -l)
+    echo "delta=$((after - before))"
+  stdout: "delta=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c091_write_side_substitution_loop_leaves_the_fd_table_unchanged
+  description: "C091: 20 >(cmd) substitutions leave the shell's own descriptor count where it started"
+  command: |
+    before=$(ls /dev/fd | wc -l)
+    i=0; while [ "$i" -lt 20 ]; do echo x > >(cat > /dev/null); i=$((i+1)); done
+    after=$(ls /dev/fd | wc -l)
+    echo "delta=$((after - before))"
+  stdout: "delta=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c091_substitution_descriptor_survives_the_consumers_own_redirect
+  description: "C091 adjacency: the /dev/fd/N handed to a consumer is clear of the descriptors the consumer redirects (cat <(echo a) 3>f)"
+  command: |
+    cat <(echo a) 3>f
+    cat <(echo b) 4>g 3>h
+  stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
