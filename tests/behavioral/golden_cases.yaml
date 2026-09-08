@@ -11206,22 +11206,22 @@
 
 - name: c031_builtin_fd3_target_expanded_once
   description: "C031: echo hi 3> \"$(cmd)\" runs the target's command substitution exactly once"
-  command: 'echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
-  stdout: "hi\n       1\n"
+  command: 'echo hi 3> "$(echo x >> ctr; echo o3)"; awk "END{print NR}" ctr'
+  stdout: "hi\n1\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_builtin_fd9_target_expanded_once
   description: "C031: a builtin that writes nothing (: 9> target) still expands its target once"
-  command: ': 9> "$(echo x >> ctr; echo o9)"; wc -l < ctr'
-  stdout: "       1\n"
+  command: ': 9> "$(echo x >> ctr; echo o9)"; awk "END{print NR}" ctr'
+  stdout: "1\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_builtin_fd3_input_target_expanded_once
   description: "C031: an INPUT redirect on fd 3 expands once, and the fd carries that file's bytes"
-  command: 'printf "L\n" > src; read -u 3 v 3< "$(echo x >> ctr; echo src)"; echo "v=$v $(wc -l < ctr)"'
-  stdout: "v=L        1\n"
+  command: 'printf "L\n" > src; read -u 3 v 3< "$(echo x >> ctr; echo src)"; echo "v=$v $(awk "END{print NR}" ctr)"'
+  stdout: "v=L 1\n"
   stderr: ""
   exit_code: 0
 
@@ -11241,22 +11241,22 @@
 
 - name: c031_fd3_points_at_the_single_expansion
   description: "C031: the bytes written to fd 3 land in the file the ONE expansion named"
-  command: 'eval "echo payload >&3" 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr; cat o3'
-  stdout: "       1\npayload\n"
+  command: 'eval "echo payload >&3" 3> "$(echo x >> ctr; echo o3)"; awk "END{print NR}" ctr; cat o3'
+  stdout: "1\npayload\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_procsub_target_forks_once
   description: "C031: a process substitution as a redirect target forks exactly one child (read fd 3 to synchronize)"
-  command: 'read -u 3 v 3< <(echo x >> ctr; echo data); echo "v=$v $(wc -l < ctr)"'
-  stdout: "v=data        1\n"
+  command: 'read -u 3 v 3< <(echo x >> ctr; echo data); echo "v=$v $(awk "END{print NR}" ctr)"'
+  stdout: "v=data 1\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_mapfile_procsub_target_forks_once
   description: "C031: mapfile -u 3 from a process substitution target forks one child"
-  command: 'mapfile -t -u 3 arr 3< <(echo x >> ctr; echo L1; echo L2); echo "${arr[0]}-${arr[1]} $(wc -l < ctr)"'
-  stdout: "L1-L2        1\n"
+  command: 'mapfile -t -u 3 arr 3< <(echo x >> ctr; echo L1; echo L2); echo "${arr[0]}-${arr[1]} $(awk "END{print NR}" ctr)"'
+  stdout: "L1-L2 1\n"
   stderr: ""
   exit_code: 0
 
@@ -11301,36 +11301,36 @@
 
 - name: c031_control_brace_group_expands_once
   description: "C031 control: a brace group's fd-3 target already expanded once"
-  command: '{ echo hi; } 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
-  stdout: "hi\n       1\n"
+  command: '{ echo hi; } 3> "$(echo x >> ctr; echo o3)"; awk "END{print NR}" ctr'
+  stdout: "hi\n1\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_control_external_command_expands_once
   description: "C031 control: an external command's fd-3 target is planned in the child, once"
-  command: '/bin/echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
-  stdout: "hi\n       1\n"
+  command: '/bin/echo hi 3> "$(echo x >> ctr; echo o3)"; awk "END{print NR}" ctr'
+  stdout: "hi\n1\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_control_stdout_stream_path_expands_once
   description: "C031 control: the fd 1 stream path expands its target once and receives the output"
-  command: 'echo hi > "$(echo x >> ctr; echo o1)"; wc -l < ctr; cat o1'
-  stdout: "       1\nhi\n"
+  command: 'echo hi > "$(echo x >> ctr; echo o1)"; awk "END{print NR}" ctr; cat o1'
+  stdout: "1\nhi\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_control_permanent_exec_expands_once
   description: "C031 control: exec 3> target is permanent and already expanded once"
-  command: 'exec 3> "$(echo x >> ctr; echo o3)"; echo permanent >&3; exec 3>&-; wc -l < ctr; cat o3'
-  stdout: "       1\npermanent\n"
+  command: 'exec 3> "$(echo x >> ctr; echo o3)"; echo permanent >&3; exec 3>&-; awk "END{print NR}" ctr; cat o3'
+  stdout: "1\npermanent\n"
   stderr: ""
   exit_code: 0
 
 - name: c031_control_named_fd_expands_once
   description: "C031 control: a named fd ({v}> target) is self-contained and expands once"
-  command: 'echo hi {v}> "$(echo x >> ctr; echo ov)"; wc -l < ctr'
-  stdout: "hi\n       1\n"
+  command: 'echo hi {v}> "$(echo x >> ctr; echo ov)"; awk "END{print NR}" ctr'
+  stdout: "hi\n1\n"
   stderr: ""
   exit_code: 0
 
