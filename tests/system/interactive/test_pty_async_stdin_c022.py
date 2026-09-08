@@ -186,9 +186,13 @@ def _run_c_mode_with_stdout_on_a_terminal(workdir, script, timeout=8):
             os.killpg(os.getpgid(child.pid), signal.SIGKILL)
         except ProcessLookupError:      # it exited in the meantime
             exited = True
-        except PermissionError:         # this host raises EPERM on killpg
-            pass                        # the wait below still reaps it
-        child.wait(timeout=5)
+        except PermissionError:         # this host can refuse killpg
+            child.kill()                # ...so kill the shell itself
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass                        # unkillable: still a clean FAIL below
+
     os.close(master)
     return OSC.sub("", out.decode(errors="replace").replace("\r", "")), exited
 
