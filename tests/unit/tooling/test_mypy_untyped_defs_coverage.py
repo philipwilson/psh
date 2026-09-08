@@ -343,6 +343,10 @@ POST_ENDPOINT_MIGRATED: list = [
     # slot 1.9 (C020): the one trailing-redirection helper, born fully
     # typed — it joins the discipline rather than claiming an exemption.
     "psh.parser.combinators.trailing_redirects",
+    # Slot 2.3: bash's legal_number for builtin numeric operands. Fully
+    # annotated at birth and given both disallow flags in pyproject, so it is
+    # MIGRATED rather than out of scope.
+    "psh.builtins.numeric",
 ]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline

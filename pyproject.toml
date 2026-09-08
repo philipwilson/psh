@@ -237,6 +237,10 @@ module = [
     "psh.scripting.program_source",
     # --- joined in Improvement Program 2026-09 slot 1.9 (C020).
     "psh.parser.combinators.trailing_redirects",
+    # Slot 2.3: bash's legal_number for builtin numeric operands. Born after
+    # the pinned scope endpoint, written fully annotated, so it joins the
+    # discipline from its first def rather than being noticed later.
+    "psh.builtins.numeric",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

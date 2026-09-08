@@ -101,6 +101,17 @@ class TopLevelAbort(BaseException):
     interactive modes). Those raisers pass ``contain_nested=False`` so
     nested buffered boundaries re-raise instead of containing.
 
+    ``usage_discard_channel``: this abort is the special-builtin USAGE
+    family's too-many-arguments discard (``core/internal_errors.py#special_builtin_usage_discard``).
+    Its status (2) is a MAIN-shell and SUBSHELL rule — ``( exit 1 2 ); echo $?``
+    is 2 in a script — but a SUBSTITUTION child that dies on the same discard
+    exits **1** in bash (``x=$(exit 1 2); echo $?`` and the backtick spelling
+    are 1, where the ``( )`` next to them is 2). Only that one raise site sets
+    it, and only the buffered boundary
+    (``scripting/source_processor.py#SourceProcessor._dispatch_execution``, the
+    top of a substitution child) reads it, keyed on ``state.in_substitution``;
+    everywhere else the abort keeps ``.status``.
+
     ``fatal_expansion_channel``: this abort's ``status`` came from the
     SHELL-EXIT family's CHANNEL rule (``fatal_expansion_status``'s
     ``command_mode`` branch — 127 under ``-c``, 1 elsewhere). That rule is a
@@ -117,11 +128,13 @@ class TopLevelAbort(BaseException):
     """
     def __init__(self, status: int = 1, errexit_immune: bool = False,
                  contain_nested: bool = True,
-                 fatal_expansion_channel: bool = False):
+                 fatal_expansion_channel: bool = False,
+                 usage_discard_channel: bool = False):
         self.status = status
         self.errexit_immune = errexit_immune
         self.contain_nested = contain_nested
         self.fatal_expansion_channel = fatal_expansion_channel
+        self.usage_discard_channel = usage_discard_channel
         super().__init__()
 
 

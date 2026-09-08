@@ -326,7 +326,8 @@
         },
         {
           "id": "2.3",
-          "title": "Usage-error status family"
+          "title": "Usage-error status family",
+          "release": "0.791.0"
         },
         {
           "id": "2.4",
@@ -403,6 +404,31 @@
             "W1-N65"
           ],
           "verification": "r1 (tmp/program-2026-09/verify/slot-2.2.md)"
+        },
+        {
+          "version": "0.791.0",
+          "date": "2026-09-07",
+          "slots": [
+            "2.3"
+          ],
+          "closes": [
+            "G30",
+            "G31",
+            "W0-N4",
+            "W0-N8",
+            "W0-N9",
+            "W0-N10",
+            "W0-N30",
+            "W0-N31"
+          ],
+          "flips": "FLIP-PINS 2.3 rows",
+          "registers": [
+            "W1-N37",
+            "W1-N38",
+            "W1-N39",
+            "W1-N40"
+          ],
+          "verification": "r1 (tmp/program-2026-09/verify/slot-2.3.md)"
         }
       ]
     },

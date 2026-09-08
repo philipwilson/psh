@@ -2,6 +2,7 @@
 from typing import TYPE_CHECKING, Any, List, Optional, cast
 
 from ..core import (
+    USAGE_ERROR_STATUS,
     AssociativeArray,
     IndexedArray,
     NamerefCycleError,
@@ -22,6 +23,7 @@ from ..lexer.unicode_support import is_valid_name
 from ..visitor import format_function_definition
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import format_declaration, matches_filter
+from .numeric import legal_number
 from .registry import builtin, registry
 
 if TYPE_CHECKING:
@@ -1024,25 +1026,11 @@ class ReturnBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
-        if len(args) > 2:
-            # bash checks this before the in-function check. `return 3 4`
-            # is the same too-many-arguments family as `exit 7 8`/`shift
-            # 1 2`: the error is reported and the CURRENT INPUT UNIT is
-            # discarded — it does NOT return from the function (the rest of
-            # the body on this line dies too) and does NOT exit the shell, in
-            # default AND POSIX mode. (The old sys.exit(1) here made a
-            # non-interactive psh exit — bash survives.) Empirical, bash
-            # 5.3.15:
-            #   printf 'f(){ return 3 4; }\nf\necho after=$?\necho next\n' > s.sh
-            #   bash s.sh  -> `return: too many arguments`, after=2, next
-            # The STATUS the next line sees is ledger row W0-N9 (script and
-            # stdin leave 2, `-c` leaves 1), owned by slot 2.3 — deliberately
-            # not asserted here, so this comment cannot go stale when it lands.
-            self.error("too many arguments", shell)
-            special_builtin_usage_discard(shell.state, 1)
-
-        # Validate the numeric argument FIRST — bash reports a bad numeric
-        # argument ("numeric argument required") BEFORE the can-only-return
+        # Validate the FIRST OPERAND before the operand count, exactly like
+        # `exit abc 7` / `shift x y`: bash 5.3.15 reports "abc: numeric
+        # argument required" for `return abc 7`, NOT "too many arguments"
+        # (empirical, probed 2026-09-06 in -c, script-file and stdin modes).
+        # bash also reports a bad numeric argument BEFORE the can-only-return
         # context check, so `return abc` OUTSIDE a function prints BOTH lines
         # (both location-prefixed). Inside a function it prints only this line.
         numeric_error = False
@@ -1054,13 +1042,34 @@ class ReturnBuiltin(Builtin):
         exit_code = (shell.state.last_exit_code if entry_status is None
                      else entry_status)
         if len(args) > 1:
-            try:
-                # Wrap return value to 0-255 range like bash does
-                exit_code = int(args[1]) % 256
-            except ValueError:
+            # legal_number, not int(): `return 5_0` and anything past int64
+            # are REJECTED operands in bash, not values.
+            operand = legal_number(args[1])
+            if operand is None:
+                # Operand cell of the usage-error family: report and return
+                # from the function with the family status. `return` does NOT
+                # take special_builtin_usage_status's typed-outcome route,
+                # because in default mode bash still RETURNS from the function
+                # here (`f(){ return abc; echo in; }; f` prints nothing and
+                # leaves $?=2) rather than merely failing in place; only the
+                # status is shared. The POSIX-mode half of that cell — bash
+                # EXITS 2 for an unguarded `return abc` under `set -o posix` —
+                # is a registered gap (ledger W1-N34), not psh's behavior yet.
                 self.error(f"{args[1]}: numeric argument required", shell)
                 numeric_error = True
-                exit_code = 2
+                exit_code = USAGE_ERROR_STATUS
+            else:
+                # Wrap return value to 0-255 range like bash does
+                exit_code = operand % 256
+                if len(args) > 2:
+                    # Valid first operand + extras: the same
+                    # too-many-arguments cell as `exit 7 8` / `shift 1 2`.
+                    # It is diagnosed before the in-function check, so
+                    # `return 1 2` at the top level reports THIS, not
+                    # "can only `return' from a function". The rest of the
+                    # current input line dies; the shell does not exit.
+                    self.error("too many arguments", shell)
+                    special_builtin_usage_discard(shell.state)
 
         if not shell.state.function_stack and shell.state.source_depth == 0:
             # Usage error rc 2 (bash); a POSIX-mode non-interactive shell
@@ -1071,5 +1080,6 @@ class ReturnBuiltin(Builtin):
 
         # We can't actually "return" from the middle of execution in Python,
         # so we'll use an exception for control flow. A bad numeric argument
-        # still returns from the function/sourced file, with status 2 (bash).
-        raise FunctionReturn(2 if numeric_error else exit_code)
+        # still returns from the function/sourced file, with the family's
+        # usage status (bash).
+        raise FunctionReturn(USAGE_ERROR_STATUS if numeric_error else exit_code)

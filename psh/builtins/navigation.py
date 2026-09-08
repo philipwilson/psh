@@ -14,7 +14,7 @@ This module owns the TWO primitives every directory-changing builtin shares:
 import os
 from typing import TYPE_CHECKING, List
 
-from ..core import ReadonlyVariableError
+from ..core import USAGE_ERROR_STATUS, ReadonlyVariableError
 from .base import Builtin
 from .registry import builtin
 
@@ -99,9 +99,15 @@ class CdBuiltin(Builtin):
         for ch, _ in events:
             physical = (ch == 'P')  # last of -L/-P wins
         if len(operands) > 1:
-            # bash: `cd a b` is an error and does not change directory.
+            # bash: `cd a b` is an error and does not change directory. `cd` is
+            # NOT a special builtin, so this is the family's plain cell — the
+            # command just fails with the shared usage status (no discard, no
+            # exit, in POSIX mode too), which is why only the constant is
+            # borrowed from core/internal_errors.py. bash 5.3.15 gives 2 here
+            # where the 5.2 series gave 1 (empirical, no CHANGES item).
+            # Reproduce: bash -c 'cd a b; echo rc=$?'  -> rc=2, cwd unchanged.
             self.error("too many arguments", shell)
-            return 1
+            return USAGE_ERROR_STATUS
 
         if operands:
             path = operands[0]

@@ -2,10 +2,18 @@
 import re
 from typing import TYPE_CHECKING, List, Optional
 
-from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, resolve_append_assignment
+from ..core import (
+    USAGE_ERROR_STATUS,
+    AssociativeArray,
+    IndexedArray,
+    ReadonlyVariableError,
+    VarAttributes,
+    resolve_append_assignment,
+)
 from ..core.option_registry import OPTION_REGISTRY, OptionCategory
 from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -38,9 +46,9 @@ class HistoryBuiltin(Builtin):
         NOTE: deliberately NOT parse_flags(). This is a hand dispatch because
         bash's ``history`` conflates a numeric ``n`` operand (``history 5``,
         show the last 5) with option letters, and its bad-input messages/exit
-        codes (``abc: numeric argument required`` at 1, ``-5: invalid option``
-        at 2, ``5: history position out of range`` for ``-d``) diverge from the
-        shared helper's contract.
+        codes (``abc: numeric argument required`` and ``-5: invalid option``
+        both at USAGE_ERROR_STATUS, ``5: history position out of range`` for
+        ``-d`` at 1) diverge from the shared helper's contract.
         """
         if len(args) <= 1:
             return self._display(shell, None)
@@ -55,11 +63,18 @@ class HistoryBuiltin(Builtin):
         return self._display_operand(first, shell)
 
     def _display_operand(self, spec: str, shell: 'Shell') -> int:
-        try:
-            count = int(spec)
-        except ValueError:
+        # legal_number, not int(): `history 1_0` and anything past int64 are
+        # REJECTED operands in bash, not counts.
+        count = legal_number(spec)
+        if count is None:
+            # `history` is a regular builtin, so this is the usage-error
+            # family's PLAIN cell: report and fail with the shared status, no
+            # discard and no exit. bash 5.3.15 gives 2 here where the 5.2
+            # series gave 1 (empirical, no CHANGES item; probed 2026-09-06 in
+            # -c, script-file and stdin modes).
+            # Reproduce: bash -c 'history abc; echo rc=$?'  -> rc=2
             self.error(f"{spec}: numeric argument required", shell)
-            return 1
+            return USAGE_ERROR_STATUS
         return self._display(shell, count)
 
     # -- display ------------------------------------------------------------

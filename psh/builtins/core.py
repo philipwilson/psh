@@ -2,8 +2,13 @@
 import sys
 from typing import TYPE_CHECKING, List
 
-from ..core import SpecialBuiltinUsageError, special_builtin_usage_discard
+from ..core import (
+    SpecialBuiltinUsageError,
+    special_builtin_usage_discard,
+    special_builtin_usage_status,
+)
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -42,25 +47,30 @@ class ExitBuiltin(Builtin):
             exit_code = entry_status
         if len(args) >= 2:
             # Validate the FIRST operand BEFORE checking the operand count.
-            # bash: `exit abc 7` reports "abc: numeric argument required" and
-            # exits with 2 (the bad first operand wins over the extra one);
-            # only a VALID first operand followed by extras is "too many
-            # arguments". (Probe-verified against bash 5.2.)
-            try:
+            # bash: `exit abc 7` reports "abc: numeric argument required" (the
+            # bad first operand wins over the extra one); only a VALID first
+            # operand followed by extras is "too many arguments". The two cells
+            # then take DIFFERENT outcomes of the one usage-error family in
+            # core/internal_errors.py — neither status is spelled here.
+            # legal_number, not int(): `exit 5_0` / `exit \u0665` / anything
+            # past int64 is a REJECTED operand in bash, not a value.
+            operand = legal_number(args[1])
+            if operand is None:
+                # Operand cell: report, fail with the family status, and let
+                # the shell CONTINUE on the same line — `exit abc; echo rc=$?`
+                # prints rc=2 (bash 5.3.15; the 5.2 series exited here).
+                self.error(f"{args[1]}: numeric argument required", shell)
+                special_builtin_usage_status()
+            else:
                 # bash wraps the code modulo 256 (so `exit 257` -> 1,
                 # `exit -1` -> 255); & 0xFF matches for negatives too.
-                exit_code = int(args[1]) & 0xFF
-            except ValueError:
-                self.error(f"{args[1]}: numeric argument required", shell)
-                exit_code = 2
-            else:
+                exit_code = operand & 0xFF
                 if len(args) > 2:
-                    # Valid first operand + extras: a usage error that discards
-                    # the rest of the current input unit but does NOT exit the
-                    # shell (bash: `exit 7 8` reports "too many arguments",
-                    # rc 1, and the rest of the line / `-c` string is dropped).
+                    # Valid first operand + extras: the too-many-arguments cell
+                    # discards the rest of the current input unit and does NOT
+                    # exit the shell.
                     self.error("too many arguments", shell)
-                    special_builtin_usage_discard(shell.state, 1)
+                    special_builtin_usage_discard(shell.state)
 
         # bash: the FIRST interactive exit attempt with stopped jobs is
         # blocked with "There are stopped jobs."; a second consecutive
