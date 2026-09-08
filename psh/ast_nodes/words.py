@@ -9,7 +9,7 @@ context. The expansion nodes (``$var``, ``${...}``, ``$(...)``, ``$((...))``,
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
 
 from .base import ASTNode
 
@@ -152,13 +152,9 @@ class VariableExpansion(Expansion):
         default=None, compare=False, repr=False)
 
     def __str__(self):
-        # A subscripted reference (``arr[@]``, ``arr[0]``) or any name with
-        # non-identifier characters must render as ``${name}`` — a bare
-        # ``$arr[@]`` parses as ``${arr}[@]`` (element 0 + literal "[@]").
-        name = self.name
-        if _BARE_VAR_NAME.match(name) or (len(name) == 1 and name in _SPECIAL_PARAM_CHARS):
-            return f"${name}"
-        return f"${{{name}}}"
+        # No following-part context here: the spelling authority is
+        # variable_expansion_text (see its docstring for the rule).
+        return variable_expansion_text(self)
 
 
 @dataclass
@@ -210,22 +206,177 @@ class ExpansionPart(WordPart):
         return str(self.expansion)
 
 
-def _expansion_literal_text(expansion: Expansion) -> str:
-    """Render an Expansion as the literal ``$``-source text it came from.
+def variable_expansion_text(expansion: 'VariableExpansion',
+                            next_part: Optional[WordPart] = None,
+                            separated: bool = False) -> str:
+    """The source spelling of a ``$name`` reference — THE brace authority.
 
-    Helper for :meth:`Word.to_literal_string` (quote removal of words whose
-    expansions were never live, e.g. inside single quotes). Every expansion
-    renders through its own ``__str__`` source-repr, except a bare
-    ``VariableExpansion`` which is emitted unbraced (``$name``) to match the
-    literal source it stood in for. (The former hand-rolled
-    CommandSubstitution/ArithmeticExpansion arms duplicated ``__str__``
-    byte-for-byte, and the ParameterExpansion arm carried a historically-broken
-    operator-suffix rule — ``${var#}`` where ``__str__`` correctly emits
-    ``${#var}`` — that was unreachable for parser-built words; both removed.)
+    Every reconstruction of shell source from a Word (``--format``,
+    ``declare -f``/``type``/``export -f``, ``$BASH_COMMAND``, ``--debug-ast``,
+    the ``.args`` view, diagnostics) renders a :class:`VariableExpansion`
+    through this function, so the spelling is decided once. Braces are emitted
+    when ANY of:
+
+    * the name cannot be spelled bare — a subscripted reference (``arr[@]``,
+      ``arr[0]``) or any non-identifier name; a bare ``$arr[@]`` re-parses as
+      ``${arr}[@]`` (element 0 plus a literal ``[@]``);
+    * the SOURCE wrote them (``braced``) — dropping them changes which variable
+      is read, because brace expansion runs BEFORE parameter expansion and
+      fuses a following name-char run into a bare name: ``${v}{1,2}`` yields
+      ``${v}1``/``${v}2`` while ``$v{1,2}`` yields the names ``v1``/``v2``;
+    * the next part that actually PRINTS would fuse with the name once the word
+      is written back out — its text starts with a name char. Neither quoting
+      nor an empty part in between saves it: the renderers close the gap the
+      source's quotes left, either by merging a RUN of adjacent same-quote
+      parts (a ``$v`` region, an EMPTY one and an ``x`` region are emitted as
+      one ``"…"``) or by dropping quotes
+      altogether (``display_text``), so ``$v`` + ``""`` + ``"x"`` would
+      re-parse as the name ``vx``. The neighbour is therefore chosen by
+      :func:`next_rendered_part`, which walks past zero-length parts — the
+      syntactically next part is not necessarily the next one on the page.
+
+    A bare ``$v{1,2}`` is NOT re-braced: ``{`` is not a name char, and the
+    fusion into ``v1``/``v2`` is what the source asked for — ``braced`` is the
+    only thing that separates it from ``${v}{1,2}``. ``separated`` flips that:
+    it means the SOURCE put something between the name and ``next_part`` that a
+    rendering may not preserve — a zero-length part, or a quote boundary — and
+    that something already stopped the fusion. ``$v""{1,2}`` and ``"$v"{1,2}``
+    both mean ``${v}1``/``${v}2``, not ``v1``/``v2`` (bash 5.3.15), so a
+    renderer that drops the empty region or the quotes has to say so with
+    braces.
+
+    DELIBERATE CONSERVATISM — do not "simplify" this back. The rule serves two
+    renderers that close the source's quote gap DIFFERENTLY: the formatter
+    merges adjacent same-quote regions, ``display_text`` drops quotes entirely.
+    Asking each caller to compute its own adjacency would put the decision back
+    in two places, which is the shape of the defect this function exists to
+    delete. So the rule takes the union and sometimes writes braces a minimal
+    renderer would omit (``foo$v"dq"`` -> ``foo${v}"dq"``). That is safe
+    everywhere except before ``{``: ``${v}`` and ``$v`` name the same parameter,
+    and the special parameters brace legally and equivalently — note that a
+    NAME is never invented in the process, so ``$#`` before ``x`` renders
+    ``${#}x`` (``$#`` then a literal), never ``${#x}`` (the length of ``x``),
+    and ``$!`` before ``x`` renders ``${!}x``, never the indirection
+    ``${!x}``. Probed on bash 5.3.15 for ``? @ * # $ ! - 0 1 2``.
+
+    The RUNTIME half of the same rule is
+    ``psh/expansion/brace_expansion_words.py#_fuse_bare_variables``, which
+    performs the fusion this function must anticipate; the render side has to
+    stay at least as conservative as it, never less.
+
+    Reproduce the two harms with::
+
+        v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; eval "$(declare -f f)"; f
+        v=1 vx=BAD;    g() { echo "$v""x"; };   eval "$(declare -f g)"; g
+
+    which must print ``11 12`` and ``1x`` — the direct calls' output — not
+    ``A B`` and ``BAD``. The third harm is the same ``g`` with an EMPTY
+    double-quoted region between the two (a shape this file cannot spell
+    inside a docstring); it is written out in ``psh/visitor/CLAUDE.md`` and
+    carried as the ``dq_empty_*`` rows of the round-trip corpus.
     """
-    if isinstance(expansion, VariableExpansion):
-        return f"${expansion.name}"
-    return str(expansion)
+    name = expansion.name
+    bare_ok = bool(_BARE_VAR_NAME.match(name)) or (
+        len(name) == 1 and name in _SPECIAL_PARAM_CHARS)
+    if (bare_ok and not expansion.braced
+            and not _fuses_with(next_part, separated)):
+        return f"${name}"
+    return f"${{{name}}}"
+
+
+def part_source_text(parts: List[WordPart], index: int) -> str:
+    """Part ``index`` of ``parts`` as source text, in its neighbours' context.
+
+    The ONE place a word part is turned back into source: a ``$name`` goes
+    through :func:`variable_expansion_text` with the next PRINTING part as
+    brace context (:func:`next_rendered_part`), everything else through its own
+    ``__str__``. Every consumer that rebuilds a word —
+    :meth:`Word.display_text`, :meth:`Word.to_literal_string`, the formatter,
+    the tilde-prefix collapse, the array-subscript and array-element flat texts
+    — calls this rather than ``str(part)``, so none of them can drift into its
+    own spelling rule.
+    """
+    part = parts[index]
+    if isinstance(part, ExpansionPart) and isinstance(part.expansion,
+                                                      VariableExpansion):
+        nxt, separated = next_rendered_part(parts, index)
+        return variable_expansion_text(part.expansion, nxt, separated)
+    return str(part)
+
+
+def next_rendered_part(parts: List[WordPart],
+                       index: int) -> Tuple[Optional[WordPart], bool]:
+    """The first part after ``index`` that PRINTS, and whether it is SEPARATED.
+
+    THE neighbour rule, so no caller has to assemble it. Two answers, because
+    the renderers need both and neither is derivable from the other:
+
+    * the next part that actually prints. Zero-length parts are skipped: ``""``,
+      ``''``, ``$''`` and ``$""`` each parse to a ``LiteralPart('')`` that
+      contributes no characters, so they separate nothing in the emitted text —
+      the formatter merges the whole run of same-quote parts into one region,
+      and ``display_text`` drops the quotes entirely. Answering about
+      ``parts[index + 1]`` would describe the SOURCE, not the page: with a
+      ``$v`` region, an EMPTY region and an ``x`` region, the syntactically next
+      part is the empty one while the next part on the page is ``x``, and a
+      ``$v`` spelled bare in front of it re-parses as the name ``vx``.
+    * whether the source kept the two apart with something a rendering may
+      drop — a zero-length part walked past on the way, or a quote boundary on
+      either side. That separator is invisible on the page but NOT in the
+      source's meaning: it stops the name from reaching a following ``{``
+      (``$v""{1,2}`` and ``"$v"{1,2}`` are ``${v}1``/``${v}2``, while
+      ``$v{1,2}`` is ``v1``/``v2``), so a renderer that drops it has to put the
+      braces back. Forward-only: an empty part BEFORE the name, or AFTER the
+      brace list, separates nothing between them and must not brace.
+
+    Returns ``(None, separated)`` when nothing after ``index`` prints.
+    """
+    # `quoted` is declared on BOTH concrete part classes; the abstract
+    # ``WordPart`` base is the only reason the annotation looks wider, so the
+    # cast states that rather than a defensive read inventing a default.
+    separated = bool(cast(_QuotedPart, parts[index]).quoted)
+    for j in range(index + 1, len(parts)):
+        nxt = parts[j]
+        if isinstance(nxt, LiteralPart) and not nxt.text:
+            separated = True
+            continue
+        return nxt, separated or bool(cast(_QuotedPart, nxt).quoted)
+    return None, separated
+
+
+def _fuses_with(next_part: Optional[WordPart], separated: bool) -> bool:
+    """Would a bare ``$name`` swallow ``next_part``'s leading text once written?
+
+    ``next_part`` is the next part that PRINTS (:func:`next_rendered_part`),
+    never blindly the syntactically next one. Only a LITERAL can fuse — another
+    expansion starts with ``$``, which delimits the name — and only through its
+    leading ``[A-Za-z0-9_]`` run (``$x`` + ``there`` -> ``$xthere``).
+
+    The literal's own ``quoted`` flag is deliberately NOT consulted. A quote
+    delimits the name in the SOURCE, but not in the text the renderers emit:
+    ``_format_word`` merges consecutive parts that share a quote char into one
+    region (``"$v"`` + ``""`` + ``"x"`` -> ``"$vx"``) and ``display_text`` drops
+    quotes entirely (``$v`` + ``""`` + ``"x"`` -> ``$vx``), and either re-parses
+    as the name ``vx``. Braces cost nothing where they are not needed —
+    ``${v}`` and ``$v`` name the same parameter — so this errs toward emitting
+    them.
+
+    A leading ``{`` fuses only when ``separated``: a DIRECTLY adjacent, equally
+    unquoted ``$v{1,2}`` re-parses to this same shape and re-fuses identically,
+    so bracing it would CHANGE which variables are read. With a zero-length
+    part or a quote boundary in between, the source already stopped the fusion
+    and a renderer that drops that separator would restore it.
+    """
+    if not isinstance(next_part, LiteralPart) or not next_part.text:
+        return False
+    lead = next_part.text[0]
+    return lead.isalnum() or lead == '_' or (separated and lead == '{')
+
+
+#: The only concrete ``WordPart`` subclasses. Both declare ``quoted`` /
+#: ``quote_char``; the abstract base does not, so code that reads a quote
+#: context narrows to this rather than guarding with ``getattr``.
+_QuotedPart = Union[LiteralPart, ExpansionPart]
 
 
 @dataclass
@@ -320,8 +471,17 @@ class Word(ASTNode):
         ``$``-source form (``${x:-d}`` -> ``${x:-d}``). This is the text
         semantic call sites want when they bypass ``__str__``'s quote
         re-wrapping; it is the basis of ``SimpleCommand.args``.
+
+        A ``$name`` part is spelled by :func:`variable_expansion_text` with the
+        FOLLOWING part as context, so a source ``${v}{1,2}`` does not flatten
+        to ``$v{1,2}`` (which names ``v1``/``v2`` instead of ``v``).
         """
-        return ''.join(str(part) for part in self.parts)
+        return ''.join(self.part_source_text(i)
+                       for i in range(len(self.parts)))
+
+    def part_source_text(self, index: int) -> str:
+        """This word's part ``index`` as source text (:func:`part_source_text`)."""
+        return part_source_text(self.parts, index)
 
     def to_literal_string(self) -> str:
         """The word's text after quote removal, with expansions unexpanded.
@@ -333,12 +493,11 @@ class Word(ASTNode):
         gone, any ExpansionPart rendered as its ``$``-source text).
         """
         chunks: List[str] = []
-        for part in self.parts:
-            if isinstance(part, LiteralPart):
-                chunks.append(part.text)
-            elif isinstance(part, ExpansionPart):
-                # In single quotes, expansions are literal
-                chunks.append(_expansion_literal_text(part.expansion))
+        for i, part in enumerate(self.parts):
+            if isinstance(part, (LiteralPart, ExpansionPart)):
+                # In single quotes an expansion is literal text: the same
+                # source spelling every other reconstruction uses.
+                chunks.append(self.part_source_text(i))
         return ''.join(chunks)
 
     @property

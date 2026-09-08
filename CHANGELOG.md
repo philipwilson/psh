@@ -4,6 +4,54 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.796.0 (2026-09-08) - Executable round-trip: serialized code re-parses to the same behaviour (Improvement Program 2026-09, Wave 1 slot 1.6)
+- P1 WRONG TARGET AFTER A ROUND TRIP (C033, C231): `declare -f` / `typeset -f` /
+  `type` / `command -V` / `export -f` / `--format` / `--debug-ast` /
+  `$BASH_COMMAND` dropped the `${…}` braces a script had written when the next
+  character was not a name character, so a brace expansion after the reference
+  silently RETARGETED the read — `v=1 v1=A v2=B; f(){ echo ${v}{1,2}; }`
+  printed `11 12` directly but `A B` after `eval "$(declare -f f)"`, because
+  brace expansion runs before parameter expansion and `$v{1,2}` names
+  `v1`/`v2`.
+- The `$name`-vs-`${name}` spelling now has ONE owner,
+  `psh/ast_nodes/words.py#variable_expansion_text`, which every code-printing
+  path and every word rebuild asks; a source-bare `$v{1,2}` still stays bare.
+  The hand-rolled `'${' + name + '}'` in the formatter, the second `$name`
+  spelling in the word helpers and four raw `str(part)` word rebuilds are
+  deleted, and two ratchets keep them deleted: no second `${…}` spelling in
+  the rendering trees, and no `str(p)` over a word's `.parts` anywhere in
+  `psh/`.
+- The neighbour the rule asks about is the next part that actually PRINTS, not
+  the next part in the list: a zero-length literal (`""`, `''`, `$''`, `$""`)
+  between the reference and a brace list is a separator the renderers drop, so
+  `echo "$v"""""x"` used to round-trip into a read of `$vx`. The same rule
+    `echo ~:${v}`, which printed `$v` where bash prints `${v}`.
+- Integration note (merge-time): the new lookahead read `quoted` through
+  `getattr`, which the declared-field-access ratchet correctly rejects — its
+  frozen set is shrink-only debt, so growing it was not an option. The reads are
+  now direct, narrowed by a `_QuotedPart` alias that states the real fact: the
+  two concrete part classes both declare `quoted`, and only the abstract base
+  makes the annotation look wider. Reported by the release gate, not by the
+  slot's own suites.
+- Ledger: W1-N69 (`declare -a q=({1,2})` does not brace-expand and stores
+  `(2)` as element 0), W1-N70 (an indexed procsub subscript is diagnosed with a
+  different message class than bash's), W1-N71 (`$_` is not seeded at startup),
+  W1-N72 (`word_analysis.VariableReference.braced` is a second, consumerless
+  notion of "braced"), W1-N75 (a quoted component anywhere in ARITHMETIC is a
+  psh parse error), W1-N76 (`set` does not list function definitions), W1-N82
+  (`case 1x in "$v"@(x))` is a parse error under `extglob`) and W1-N85 (the
+  quote-dropping `display_text` view renders `$v"{1,2}"` as `${v}{1,2}`,
+  which re-parses to `11 12` rather than `1{1,2}` — inherent to any renderer
+  that drops quotes, and a strict improvement on the flattening it replaces)
+  registered, all pre-existing.
+- Verification: three adversarial rounds plus two bounded confirms. Round 1
+  found the fix still retargeted `"$v""x"` because the formatter merges
+  same-quote regions AFTER the decision; round 2 found an empty part inside
+  such a run defeats a one-part lookahead — a shape no test in the tree
+  contained. 451 pin nodes red at base and none at the tip; six mutations bound
+  the rule from both sides, and the two halves of the separator rule are pinned
+  separately (5 ∪ 4 = 8, one row shared).
+
 ## 0.795.0 (2026-09-08) - A background command reads the input its frame was given (Improvement Program 2026-09, Wave 1 slot 1.12)
 - P1 SILENT DATA LOSS (C022): a command backgrounded inside a pipeline member or
   a redirected compound was given `/dev/null` as stdin instead of the input its

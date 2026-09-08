@@ -491,6 +491,8 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C033': ('v0.796.0', 'slot 1.6: one variable-spelling authority asked by every printer and word rebuild; the neighbour is the next PRINTING part'),
+    'C231': ('v0.796.0', 'slot 1.6: the executable round-trip contract, pinned by running the re-parsed serialization rather than comparing text'),
     'C022': ('v0.795.0', 'slot 1.12: one StdinBinding owner answering direction AND fd; POSIX default kept exactly where bash keeps it; W1-N80 declared with eight faces and two-sided pins'),
     'C042': ('v0.794.0', 'slot 1.11: one pattern-word owner; the tilde WORD is literal, the PREFIX expands, with the assignment-shaped exception; 411 pins red on base'),
     'C040': ('v0.793.0', 'slot 1.10: per-statement noexec gate consulted after pending traps; interactive refusal scoped by an inherited internal option'),

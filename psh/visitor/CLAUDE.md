@@ -201,6 +201,64 @@ change that added the matrix test):
    redirects attach and apply like any command's (`break >f` — bash). The
    matrix's `REDIRECT_EXEMPT` set is currently empty.
 
+## The Executable Round-Trip Contract
+
+Every path that prints code back — `--format`, `declare -f`/`typeset -f`,
+`type`, `command -V`, `export -f`, `$BASH_COMMAND`, `--debug-ast` — owes ONE
+contract: the text it emits must re-parse to a program that BEHAVES the same.
+`src=$(declare -f f); eval "$src"` must leave `f` doing what it did. This is
+strictly stronger than the two properties that are easy to test and easy to
+mistake for it:
+
+* **Structural equality is not it.** Source provenance that is excluded from
+  `__eq__` can still be semantically necessary for rendering, so
+  `parse(format(x)) == x` can hold over a serialization that changed the
+  program.
+* **Idempotence is not it.** `format(format(x)) == format(x)` says the
+  renderer has a fixed point, not that the fixed point is the input's
+  behavior.
+
+The rule that carries the contract for variable references is
+`psh/ast_nodes/words.py#variable_expansion_text` — the SOLE authority on
+`$name` vs `${name}`, asked by `VariableExpansion.__str__`,
+`Word.display_text`, `Word.to_literal_string` and `FormatterVisitor`'s word
+renderer. A second copy of that decision is what broke the contract: brace
+expansion runs BEFORE parameter expansion, so a bare `$v{1,2}` re-forms the
+names `v1`/`v2` while a delimited `${v}{1,2}` stays `${v}1`/`${v}2`, and a
+renderer that dropped the source's braces retargeted the read.
+
+The authority answers for the text that will be EMITTED, not for the parts as
+the source wrote them, and it answers about the next part that actually PRINTS.
+Both halves are load-bearing. A renderer closes gaps the source's quotes left —
+`_format_word` merges a RUN of consecutive parts sharing a quote char into one
+region, and `display_text` drops quotes entirely — so `"$v"` followed by `"x"`
+must be spelled `${v}`; and a zero-length part (`""`, `''`, `$''`, `$""`) prints
+nothing, so it does not separate the run either and the lookahead walks past it
+(`words.py#next_rendered_part`). Braces are withheld in exactly one place: a
+`{` that the name reaches DIRECTLY and unquoted, where the fusion into
+`v1`/`v2` is the source's own meaning. Put anything between them — an empty
+part or a quote — and the source has already stopped that fusion, so the
+rendering has to keep it stopped with braces.
+
+```bash
+psh -c 'v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; f; eval "$(declare -f f)"; f'
+# both lines: 11 12
+psh -c 'v=1 v1=A v2=B; f() { echo $v{1,2}; }; f; eval "$(declare -f f)"; f'
+# both lines: A B    <- the one shape that must stay bare
+psh -c 'v=1 vx=BAD; g() { echo "$v""x"; }; g; eval "$(declare -f g)"; g'
+psh -c 'v=1 vx=BAD; h() { echo "$v""""x"; }; h; eval "$(declare -f h)"; h'
+# both lines: 1x
+```
+
+Guards: `tests/unit/visitor/test_executable_roundtrip.py` (the corpus, run
+directly / after `eval "$(declare -f f)"` / after `--format`, in all three
+input modes), its bash-referenced twin
+`tests/conformance/bash/test_executable_roundtrip_conformance.py`, and
+`tests/unit/tooling/test_variable_spelling_authority.py` (a ratchet that
+fails when a second `${...}` spelling appears under `psh/visitor/` or
+`psh/ast_nodes/`, plus a census of the printers above). Adding a new
+code-printing consumer means adding it to that census, not a new brace rule.
+
 ## Available Visitors
 
 | Visitor | Purpose | Return Type |
@@ -224,6 +282,7 @@ python -m pytest tests/unit/visitor/ -v
 python -m pytest tests/unit/visitor/test_analysis_visitors.py -v
 python -m pytest tests/unit/visitor/test_formatter_visitor.py -v
 python -m pytest tests/unit/visitor/test_ast_coverage_matrix.py -v  # totality matrix
+python -m pytest tests/unit/visitor/test_executable_roundtrip.py -v  # round-trip corpus
 
 # Debug AST output
 python -m psh --debug-ast -c "if true; then echo yes; fi"

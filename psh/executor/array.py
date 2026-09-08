@@ -6,7 +6,7 @@ including indexed and associative arrays.
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from ..ast_nodes import LiteralPart, Word
+from ..ast_nodes import LiteralPart, Word, part_source_text
 from ..core import (
     ArraySubscriptError,
     AssociativeArray,
@@ -160,7 +160,8 @@ class ArrayOperationExecutor:
                 index_parts, value_word, elem_append = explicit
                 # bash always evaluates indexed-array subscripts as arithmetic;
                 # the ONE subscript authority expands then evaluates (campaign W2).
-                index_text = ''.join(str(p) for p in index_parts)
+                index_text = ''.join(part_source_text(index_parts, i)
+                                     for i in range(len(index_parts)))
                 evaluated_index = self.expansion_manager.subscript.indexed_index(index_text)
                 value = self.expansion_manager.expand_assignment_value_word(value_word)
                 if elem_append:

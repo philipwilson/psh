@@ -10,6 +10,15 @@ It is the primary oracle for the zero-behavior-change refactor of
 in the sidecar ``array_assignment_characterization_frozen.json``; a refactor
 must keep every entry byte-identical.
 
+One entry was re-frozen for the executable round-trip contract (C033):
+``a[0]=pre$x"y"`` stored the flat ``value='pre$xy'``, which re-parses as the
+NAME ``xy`` — the same retarget the contract closes, in the derived string view.
+The flat value now comes from the single spelling authority
+(``ast_nodes/words.py#variable_expansion_text``) and reads ``pre${x}y``. The
+``value_word`` is byte-identical and drives execution, so the assignment itself
+was and stays ``preXy`` in psh and bash alike (probed on 5.3.15); only the
+derived string changed.
+
 The ``ArrayElementAssignment.index`` entries were re-frozen in reappraisal
 #19 (B2, H4): ``index`` was retyped from ``Union[str, List[Token]]`` to plain
 ``str`` — both parsers already stored a one-token ``[Token(WORD, subscript)]``
