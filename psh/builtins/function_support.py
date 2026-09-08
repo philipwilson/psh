@@ -10,6 +10,7 @@ from ..core import (
     TargetScope,
     VarAttributes,
     Variable,
+    special_builtin_stops_at_first_bad_identifier,
     special_builtin_usage_discard,
 )
 
@@ -57,10 +58,12 @@ class DeclareBuiltin(Builtin):
 
         - ``invoked_as`` — the builtin name used to label the variable-path
           diagnostics (``declare``/``typeset``/``readonly``).
-        - ``special`` — True for ``readonly``: a readonly-assignment error emits
-          BARE and (after processing every operand) raises
-          :class:`SpecialBuiltinUsageError` so a posix non-interactive shell
-          exits.
+        - ``special`` — True for ``readonly``, the POSIX special builtin: a
+          readonly-ASSIGNMENT error emits BARE and (after processing every
+          operand) raises :class:`SpecialBuiltinUsageError`, and an invalid
+          IDENTIFIER raises it at once in posix mode, ending the operand loop
+          (bash 5.3; see _identifier_error_status). Either way a posix
+          non-interactive shell exits.
         - ``catch_readonly`` — False lets a readonly error propagate to the
           caller (``export``'s array-init delegation renders its own message).
         """
@@ -267,11 +270,13 @@ class DeclareBuiltin(Builtin):
         bash's declaration arg loop is CONTINUE-ON-ERROR: every operand is
         processed even after one fails (a readonly-value redeclare OR an invalid
         identifier is reported and skipped, good operands are still created, and
-        the builtin returns 1). ``invoked_as`` labels the per-arg diagnostics
-        (``declare``/``typeset``/``readonly``); ``special`` (``readonly``) emits
-        the readonly-assignment error BARE (no builtin name) and, after the whole
-        loop, raises :class:`SpecialBuiltinUsageError` so a POSIX-mode
-        non-interactive shell exits (the special-builtin contract). When
+        the builtin returns 1). The ONE exception is bash 5.3's posix-mode
+        identifier error under ``readonly`` — see _identifier_error_status, the
+        only place that ends this loop early. ``invoked_as`` labels the per-arg
+        diagnostics (``declare``/``typeset``/``readonly``); ``special``
+        (``readonly``) emits the readonly-assignment error BARE (no builtin name)
+        and, after the whole loop, raises :class:`SpecialBuiltinUsageError` so a
+        POSIX-mode non-interactive shell exits (the special-builtin contract). When
         ``catch_readonly`` is False (``export``'s array-init delegation) a
         readonly error PROPAGATES so the delegating builtin can render its own
         (bare) message.
@@ -290,10 +295,11 @@ class DeclareBuiltin(Builtin):
                 if '=' in arg:
                     rc = self._declare_assignment(arg, options, attributes,
                                                   remove_attrs, shell, context,
-                                                  invoked_as)
+                                                  invoked_as, special=special)
                 else:
                     rc = self._declare_bare_name(arg, options, attributes,
-                                                 remove_attrs, shell, invoked_as)
+                                                 remove_attrs, shell, invoked_as,
+                                                 special=special)
                 if rc != 0:
                     failed = True
             except ReadonlyVariableError as e:
@@ -351,13 +357,31 @@ class DeclareBuiltin(Builtin):
                 self.write_line(format_declaration(var), shell)
         return 0
 
+    @staticmethod
+    def _identifier_error_status(shell: 'Shell', special: bool) -> int:
+        """Status for one `not a valid identifier` operand (already reported).
+
+        For ``readonly`` (``special``) in POSIX MODE bash 5.3 stops the
+        operand loop at this first bad identifier and exits a non-interactive
+        shell (CHANGES, bash-5.3-alpha, "1. Changes to Bash" item jj) — the
+        typed outcome carries both facts. ``declare``/``typeset`` are not
+        special builtins and keep reporting every operand (`set -o posix;
+        declare é=1; echo done` prints done on bash 5.3.15).
+        """
+        if special and special_builtin_stops_at_first_bad_identifier(shell.state):
+            raise SpecialBuiltinUsageError(1, suppressible=True)
+        return 1
+
     def _declare_assignment(self, arg: str, options: dict, attributes: VarAttributes,
                             remove_attrs: VarAttributes, shell: 'Shell',
-                            context: BuiltinContext, invoked_as: str) -> int:
+                            context: BuiltinContext, invoked_as: str, *,
+                            special: bool = False) -> int:
         """Apply one `NAME=value` / `NAME+=value` declaration argument.
 
         ``invoked_as`` labels the per-arg diagnostics (``declare``/``typeset``/
-        ``readonly``); ``remove_attrs`` are the ``+flags`` to clear.
+        ``readonly``); ``remove_attrs`` are the ``+flags`` to clear;
+        ``special`` is True only for ``readonly``, the POSIX special builtin
+        whose identifier error is fatal in posix mode.
         """
         # Variable assignment (NAME=value or NAME+=value append).
         # Namerefs take the text verbatim, so '+' stays part of
@@ -371,7 +395,7 @@ class DeclareBuiltin(Builtin):
         posix_mode = shell.state.options.get('posix', False)
         if not self._is_valid_identifier(name, posix_mode):
             self._diag(invoked_as, f"`{arg}': not a valid identifier", shell)
-            return 1
+            return self._identifier_error_status(shell, special)
 
         # Name reference: store the target name as the value with the
         # NAMEREF attribute (set_variable writes it raw to `name`).
@@ -505,16 +529,17 @@ class DeclareBuiltin(Builtin):
 
     def _declare_bare_name(self, arg: str, options: dict, attributes: VarAttributes,
                            remove_attrs: VarAttributes, shell: 'Shell',
-                           invoked_as: str) -> int:
+                           invoked_as: str, *, special: bool = False) -> int:
         """Declare/modify a variable by NAME only (no assignment).
 
-        ``invoked_as`` labels the per-arg diagnostics (declare/typeset/readonly).
+        ``invoked_as`` labels the per-arg diagnostics (declare/typeset/readonly);
+        ``special`` is True only for ``readonly`` (see _identifier_error_status).
         """
         # Just declaring with attributes, no assignment
         # Validate variable name
         if not self._is_valid_identifier(arg, shell.state.options.get('posix', False)):
             self._diag(invoked_as, f"`{arg}': not a valid identifier", shell)
-            return 1
+            return self._identifier_error_status(shell, special)
 
         from .declaration_engine import ArrayKind, DeclarationEngine
         # bash tests READONLY before the array-KIND conversion: 5.3.15 answers

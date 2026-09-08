@@ -334,6 +334,34 @@ def special_builtin_usage_discard(state: 'ShellState', status: int = 1) -> NoRet
     raise TopLevelAbort(status, errexit_immune=True, contain_nested=False)
 
 
+def special_builtin_stops_at_first_bad_identifier(state: 'ShellState') -> bool:
+    """Does a special builtin's IDENTIFIER error end its operand loop?
+
+    The operand-loop half of the same bash 5.3 rule
+    :func:`special_builtin_usage_exit` states (CHANGES, bash-5.3-alpha,
+    "1. Changes to Bash" item jj, "POSIX special builtins now exit the shell
+    in posix mode on more failure cases"; item nnnnn). In POSIX mode
+    ``export``/``readonly`` diagnose the FIRST invalid identifier and stop —
+    later operands are neither diagnosed nor created; in default mode the
+    loop runs to completion (bash's continue-on-error declaration loop).
+
+    The stop is a property of POSIX MODE ALONE, not of the exit: it still
+    happens when ``command``/``builtin`` strips the exit, and inside a
+    guard that suppresses it. Reproduce (bash 5.3.15, all three input
+    modes)::
+
+        set -o posix; export 1bad=x 2bad=y      # ONE diagnostic, exits 1
+        set -o posix; command export 1bad=x 2bad=y   # ONE, rc 1, continues
+        set -o posix; export 1bad=x 2bad=y || echo caught   # ONE, caught
+        export 1bad=x 2bad=y                    # TWO diagnostics, rc 1
+
+    ``unset`` is NOT in this class: its readonly refusals diagnose EVERY
+    operand and exit afterwards (``set -o posix; readonly r=1 s=2; unset r s``
+    prints both, exits 1).
+    """
+    return bool(state.options.get('posix'))
+
+
 def special_builtin_usage_exit(shell: 'Shell', status: int,
                                suppressible: bool = False) -> int:
     """The ONE POSIX-mode special-builtin EXIT-on-error policy.
@@ -341,31 +369,52 @@ def special_builtin_usage_exit(shell: 'Shell', status: int,
     Applied where a ``SpecialBuiltinUsageError`` surfaces from a DIRECT
     special-builtin invocation (the strategy paths of the builtin guard;
     ``command``/``builtin`` invocations bypass it, stripping the special
-    property — bash/POSIX). bash 5.2, probe-verified
-    (docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md +
-    tmp/posixexit battery):
+    property — bash/POSIX). The rule, probe-verified against bash 5.3.15 in
+    the ``-c``, script-file and stdin modes
+    (docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md):
 
     - In POSIX mode a NON-interactive shell — script file, ``-c``, piped
       stdin, all covered by ``is_script_mode`` — EXITS with the builtin's
-      own status (2 for option/syntax usage errors; 1 for the readonly-
-      assignment and dot-file cases). The exit is NOT contained by
+      own status (2 for option/syntax usage errors; 1 for the readonly,
+      identifier and dot-file cases). The exit is NOT contained by
       ``eval``/``source``/function calls/trap actions (``SystemExit``
       passes through them), only by fork boundaries (subshells, command
       substitution, pipeline members — the child exits, the parent
       survives, exactly like bash).
-    - SUPPRESSIBLE outcomes (invalid options, top-level ``return``) are
-      exempt in errexit-suppressed contexts — if/while/until conditions,
-      non-final &&/|| members, ``!``-negated pipelines, reaching through
-      functions/brace groups/subshells but NOT across an eval/dot
-      boundary (``ExecutionContext.special_exit_suppressed``): there the
-      builtin merely fails with ``status`` (``set -o posix; set -q ||
-      echo caught`` survives; ``eval 'set -q' || x`` still exits —
-      probe-verified, tmp/posixexit/suppress_*.txt). The HARD class
-      (eval/dot syntax, missing/unreadable dot-file, readonly
-      assignment) exits even when guarded.
+    - bash 5.3 WIDENED the exit set to OPERAND errors (CHANGES,
+      bash-5.3-alpha, "1. Changes to Bash" item jj, "POSIX special builtins
+      now exit the shell in posix mode on more failure cases"; item nnnnn,
+      "Fix posix-mode cases where failure of special builtins did not cause
+      the shell to exit"): an invalid identifier given to
+      ``export``/``readonly``, and ``unset`` refusing a readonly variable,
+      array, array element or function. Under the 5.2 series those reported
+      and continued. ``readonly -f``/``unset -f`` NAME operands that are
+      merely absent stay silent rc-0/rc-1 non-exits, and ``unset 1bad``
+      remains a silent rc-0 no-op.
+    - SUPPRESSIBLE outcomes (invalid options, top-level ``return``, and the
+      5.3 operand class above) are exempt in errexit-suppressed contexts —
+      if/while/until conditions, non-final &&/|| members, ``!``-negated
+      pipelines — reaching through functions, brace groups, subshells AND,
+      on bash 5.3, through an ``eval``/``.`` boundary: ``set -o posix; eval
+      'set -q' || echo caught`` prints ``caught`` and the shell lives
+      (5.2 exited there). The one boundary the suppression does NOT cross
+      is a TRAP ACTION: a guard around the interrupted command does not
+      reach the action bash runs between commands (``set -o posix; trap
+      'set -q' DEBUG; false || echo caught`` still exits 2 —
+      ``ExecutionContext.trap_action_boundary``). The HARD class (eval/dot
+      syntax, missing/unreadable dot-file, readonly ASSIGNMENT) exits even
+      when guarded.
     - Otherwise (default mode; interactive or embedded shells, where
       ``is_script_mode`` is False) the builtin simply FAILS with
       ``status`` — byte-identical to the pre-policy behavior.
+
+    The exit PUBLISHES ``status`` as ``$?`` before raising, because the EXIT
+    trap runs after the shell has unwound and reads the live
+    ``last_exit_code``: ``set -o posix; trap 'echo rc=$?' EXIT; export
+    1bad=x`` prints ``rc=1`` on bash 5.3.15 (``set -q`` prints 2), and a
+    cleanup trap that branches on ``$?`` would otherwise see success where
+    bash sees the failure. ``execute_as_main`` recovers the process status
+    from the ``SystemExit`` itself, so this only fixes what the trap observes.
 
     The message was already printed at the raise site.
     """
@@ -376,6 +425,7 @@ def special_builtin_usage_exit(shell: 'Shell', status: int,
             if (executor is not None
                     and executor.context.special_exit_suppressed):
                 return status
+        state.last_exit_code = status
         raise SystemExit(status)
     return status
 
