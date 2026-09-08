@@ -766,6 +766,106 @@ per-command list that closes and then reopens the descriptor delivers the body's
 output to the reopened target in both shells (`{ echo hi; } 1>&- 1>f` writes
 `hi` into `f`).
 
+### Background commands and the input their frame was given
+
+When job control is off (a script, `-c`, or piped input), POSIX gives an
+asynchronous command `/dev/null` on standard input, so a backgrounded reader
+cannot steal the script's own input. Both shells do that:
+
+```bash
+printf 'A\n' | psh -c 'cat & wait; read x; echo "shell-read=[$x]"'
+# psh and bash:  shell-read=[A]      (the reader got /dev/null; the shell kept its input)
+```
+
+Both shells also agree that the default does **not** apply when the current
+frame's fd 0 was supplied by a pipeline or by an enclosing compound command's
+redirect — there the background command inherits that input:
+
+```bash
+echo hello | { cat & wait; }     # both: hello
+{ cat & wait; } < file           # both: the file's contents
+```
+
+Both shells also agree that an OUTPUT redirect landing on fd 0 supplies no
+input, so the default still applies — `{ cat & wait; } 0>&1` returns at once in
+both, and neither leaves a reader holding a write-only descriptor. A *close* of
+fd 0 (`<&-`, `0>&-`) counts as a redirection of standard input in both, and the
+background command inherits the closed descriptor.
+
+**Deliberate divergence — how long that inherited binding is remembered.** bash
+tracks "did a frame supply fd 0" in a single global flag that it clears once per
+top-level command and reassigns whenever a construct with redirections runs, so
+it **forgets** an inherited binding as soon as a nested frame reassigns the flag,
+never records one for a construct that forked before the assignment, and keeps a
+stale one for the rest of a top-level command. psh scopes the fact to the frame
+that established it: it lasts exactly as long as that pipeline member or that
+compound's redirections, and an inner construct never releases an outer one's.
+The difference is visible in both directions.
+
+psh delivers bytes bash drops (nothing in the pipeline or the file is read at
+all in bash):
+
+```bash
+echo hello | ( ( cat & wait ) )              # psh: hello        bash: (nothing)
+( ( cat & wait ) ) < file                    # psh: the file     bash: (nothing)
+{ { cat & wait; } > out; } < file; cat out   # psh: the file     bash: (nothing)
+{ cat & wait; } < file | cat                 # psh: the file     bash: (nothing)
+{ cat & wait; } < file & wait                # psh: the file     bash: (nothing)
+exec 3< file; { cat & wait; } 0<&3-          # psh: the file     bash: (nothing)
+```
+
+(The subshell spelling of the fifth line, `( cat & wait ) < file & wait`, is the
+same in both shells — bash records a subshell's own redirections.)
+
+and psh withholds the shell's *own* input from a background reader in two shapes
+where bash hands it over. psh does not give those bytes to the async reader;
+they stay on the shell's standard input, where the shell's own next read still
+finds them:
+
+```bash
+printf 'A\nB\n' | psh -c '{ true; } < f; cat & wait; read x; echo "[$x]"'
+# psh:   [A]              (reader got /dev/null; A and B still on the shell's stdin)
+# bash:  A B then []      (the reader consumed both lines; the shell's read got EOF)
+
+printf 'A\nB\n' | psh -c '{ cat & wait; } 3< f; read x; echo "[$x]"'
+# same split: bash treats `3< f` as a standard-input redirection, psh follows the
+# fd that was actually rebound. The here-document spellings behave the same way:
+# `3<<EOF …` and `3<<< word` supply fd 3 in psh and are treated as redirections
+# of standard input by bash. On fd 0 (`<<EOF`, `<<< word`) the two agree.
+```
+
+The first shape needs the two commands to share one *top-level* command — a
+`;` between them — and then it applies to `-c`, script files and standard input
+alike; written on separate lines it differs only under `-c`, because bash clears
+the flag once per command it reads.
+
+When the shell reads nothing afterwards, the withheld bytes are simply unread —
+and they are equally unread in bash's own matched control. bash's delivery turns
+on constructs that have nothing to do with the frame's fd 0:
+
+```bash
+f() { { true; } < g; cat & wait; }; f <<< P    # bash: P    psh: (nothing)
+f() { cat & wait; }; f <<< P                   # bash and psh: (nothing)
+f() { { true; } > o; cat & wait; }; f <<< P    # bash and psh: (nothing)
+{ cat & wait; } {v}< f; read x                 # bash and psh: the shell reads A
+```
+
+Dropping the unrelated `{ true; } < g`, or making it redirect output instead,
+gives bash psh's answer — and for the third shape bash's answer flips on the
+descriptor *number* alone.
+
+The same misclassification has a sharper consequence when the script itself
+arrives on a pipe: bash's background reader is handed the shell's command
+source and eats the next line as data.
+
+```bash
+printf '{ cat & wait; } 3< f\necho END\n' | psh    # psh:  END        (executed)
+printf '{ cat & wait; } 3< f\necho END\n' | bash   # bash: echo END   (printed, never run)
+```
+
+(With the script in a *file* rather than a pipe, bash re-reads it and `END`
+still runs; only the shell's own standard input is consumed.)
+
 ### Script on Standard Input
 
 When psh reads its script from standard input — `cmds | psh`, `psh < file`, or

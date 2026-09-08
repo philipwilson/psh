@@ -170,6 +170,16 @@ of any process substitutions used as redirect targets; leaving it restores the
 saved fds and closed output streams and reaps those children — so every
 acquisition made on entry is released on exit, including when the body raises.
 
+Every caller states whether the list belongs to a COMPOUND command
+(`compound=True`) or to a SIMPLE one (a function CALL's `f < file`, an alias,
+a builtin). Only a compound's window records the fd-0 binding — via
+`apply_compound_redirections`/`restore_compound_redirections`, whose fd-0 entry
+in the scope's own saved-fd list IS the fact — because only a compound supplies
+fd 0 to everything its body runs, including a command the body backgrounds:
+`{ cat & wait; } < file` prints the file where the POSIX async default would
+give `/dev/null`. The single answer lives in
+`core/stdin_binding.py#StdinBinding`.
+
 The stream half of a `>&-` close is applied there by an UNORDERED scan of the
 whole list, after the fd universe has already applied it in source order, so it
 must follow the fd NUMBER and let the settled fd decide — a per-command list CAN

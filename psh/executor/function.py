@@ -137,7 +137,7 @@ class FunctionOperationExecutor:
 
                     if func.redirects:
                         with self.shell.io_manager.guarded_redirections(
-                                func.redirects) as applied:
+                                func.redirects, compound=True) as applied:
                             if not applied:
                                 return 1
                             exit_code = visitor.visit(func_body)

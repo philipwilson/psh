@@ -39,8 +39,8 @@ class AsyncJobPolicy:
     job control is off (bash: ``setup_async_signals`` + the simple-command
     ``/dev/null`` stdin redirect).
 
-    Computed ONCE from ``(background?, job-control-off?)`` and applied to EVERY
-    member of the job. The two dispositions are INDEPENDENT (campaign J1 /
+    Computed ONCE from ``(background?, job-control-off?, shell-owns-fd-0?)``
+    and applied to EVERY member of the job. The two dispositions are INDEPENDENT (campaign J1 /
     #20 H11 — the pre-J1 code fused them and gated the pair on role SINGLE, so
     a background *pipeline* member kept the default SIGINT/SIGQUIT and a
     delayed ``kill -INT`` on a background pipeline killed it 130, where bash
@@ -53,11 +53,17 @@ class AsyncJobPolicy:
       ``run_background_shell_child`` so a body-set INT/QUIT trap can fire over
       the ignored default — so this skips ``is_shell_process`` children.
     * ``redirect_stdin_from_devnull`` — dup ``/dev/null`` onto fd 0 so a
-      backgrounded reader does not steal the script's stdin. Applies only to a
-      member that would otherwise read the OUTER stdin: a standalone command
-      (role SINGLE). bash leaves an async pipeline's leader attached to the
-      real stdin (probe-pinned vs bash 5.2: ``cat | tr &`` reads stdin,
-      ``cat &`` gets /dev/null), and non-leader members already read a pipe.
+      backgrounded reader does not steal the shell's stdin. TWO independent
+      conditions narrow it, and both are bash's (5.3.15):
+
+      - role SINGLE. bash applies the default to a lone async command, never
+        to an async PIPELINE: ``cat | cat &`` leaves the leader on the real
+        stdin while ``cat &`` gets ``/dev/null``.
+      - the shell still owns fd 0 (``core/stdin_binding.py#StdinBinding``).
+        When a pipeline or an enclosing compound redirect supplied this
+        frame's fd 0, the async child INHERITS it: ``echo hi | { cat & wait; }``
+        prints ``hi`` and ``{ cat & wait; } < file`` prints the file, where
+        psh used to print nothing (C022).
     """
     ignore_int_quit: bool
     redirect_stdin_from_devnull: bool
@@ -66,12 +72,20 @@ class AsyncJobPolicy:
     INACTIVE: ClassVar["AsyncJobPolicy"]
 
     @classmethod
-    def for_launch(cls, *, background: bool,
-                   job_control_off: bool) -> "AsyncJobPolicy":
+    def for_launch(cls, *, background: bool, job_control_off: bool,
+                   stdin_is_shell_own: bool) -> "AsyncJobPolicy":
         """The policy for one launch: active only for a backgrounded job with
-        job control off, otherwise the inactive policy."""
+        job control off, otherwise the inactive policy.
+
+        *stdin_is_shell_own* is ``StdinBinding.is_shell_stdin`` — the ONE
+        answer to "is fd 0 the shell's own stdin right now". It gates the
+        stdin half alone: a background command whose fd 0 came from a pipe or
+        an enclosing compound redirect still ignores INT/QUIT, it just keeps
+        the input it was given.
+        """
         active = background and job_control_off
-        return cls(ignore_int_quit=active, redirect_stdin_from_devnull=active)
+        return cls(ignore_int_quit=active,
+                   redirect_stdin_from_devnull=active and stdin_is_shell_own)
 
     def apply(self, config: "ProcessConfig") -> None:
         """Apply this policy in the current (freshly forked) child, honoring
@@ -368,6 +382,7 @@ class ProcessLauncher:
                 AsyncJobPolicy.for_launch(
                     background=True,
                     job_control_off=self._job_control_off() or not job_control,
+                    stdin_is_shell_own=self.state.stdin_binding.is_shell_stdin,
                 ).apply(config)
 
             # 3. Set up I/O redirections if provided

@@ -15,7 +15,7 @@ from psh.executor.null_command import (
     null_command_redirects_stdin,
     null_command_status,
 )
-from psh.io_redirect.planner import redirect_target_fd
+from psh.io_redirect.redirect_program import target_fd_of
 
 
 class _State:
@@ -111,10 +111,10 @@ class TestTargetFdIsSharedWithThePlanner:
         (_r('<<', target='EOF', fd=3), 3),
     ])
     def test_target_fd(self, redirect, expected):
-        assert redirect_target_fd(redirect) == expected
+        assert target_fd_of(redirect) == expected
 
     def test_the_planner_property_delegates_to_it(self):
         from psh.io_redirect.planner import RedirectPlan
         redirect = _r('<', fd=3)
         assert RedirectPlan(redirect=redirect, target='f').target_fd == \
-            redirect_target_fd(redirect)
+            target_fd_of(redirect)

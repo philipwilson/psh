@@ -521,6 +521,11 @@ class PipelineExecutor:
         pairs: List[Tuple[int, int]] = []
         if stdin_fd is not None:
             pairs.append((stdin_fd, 0))
+            # fd 0 is this member's incoming pipe, not the shell's own stdin,
+            # for the rest of this child's life: a reader this member
+            # backgrounds must read the pipe rather than the POSIX async
+            # /dev/null (`echo hi | { cat & wait; }` prints hi).
+            self.state.stdin_binding.note_pipe_stdin()
         if stdout_fd is not None:
             pairs.append((stdout_fd, 1))
             # ``|&``: this member's stderr joins its stdout at the same pipe.
