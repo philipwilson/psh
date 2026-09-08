@@ -127,11 +127,11 @@ def _walk(node, acc):
 def _derived(words):
     """The flattening rule, restated: each part's source text, joined.
 
-    A ``$name`` part is spelled by the single brace authority, given the next
-    part that actually PRINTS (``next_rendered_part``) and whether the source
-    kept them apart with something a rendering may drop — a zero-length part or
-    a quote boundary. Both come from the authority module, so this restates the
-    JOIN independently without forking the spelling rule.
+    A ``$name`` part is spelled by the single brace authority, asked about the
+    neighbour ``next_rendered_part`` names — the next part that actually PRINTS,
+    and whether the source separated them with something a rendering may drop.
+    Both answers are TAKEN from the authority module, never recomputed here, so
+    this restates only the JOIN and cannot fork the spelling rule.
     """
     out = []
     for word in words:
@@ -139,8 +139,7 @@ def _derived(words):
         for i, part in enumerate(word.parts):
             if (isinstance(part, ExpansionPart)
                     and isinstance(part.expansion, VariableExpansion)):
-                nxt, skipped = next_rendered_part(word.parts, i)
-                separated = skipped or part.quoted or getattr(nxt, 'quoted', False)
+                nxt, separated = next_rendered_part(word.parts, i)
                 chunks.append(
                     variable_expansion_text(part.expansion, nxt, separated))
             else:

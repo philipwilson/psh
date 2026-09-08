@@ -299,44 +299,46 @@ def part_source_text(parts: List[WordPart], index: int) -> str:
     part = parts[index]
     if isinstance(part, ExpansionPart) and isinstance(part.expansion,
                                                       VariableExpansion):
-        nxt, skipped_empty = next_rendered_part(parts, index)
-        # "Separated" = the source kept the name and `nxt` apart with something
-        # a rendering may drop: a zero-length part, or a quote boundary.
-        separated = (skipped_empty or part.quoted
-                     or getattr(nxt, 'quoted', False))
+        nxt, separated = next_rendered_part(parts, index)
         return variable_expansion_text(part.expansion, nxt, separated)
     return str(part)
 
 
 def next_rendered_part(parts: List[WordPart],
                        index: int) -> Tuple[Optional[WordPart], bool]:
-    """The first part after ``index`` that PRINTS, and whether any was skipped.
+    """The first part after ``index`` that PRINTS, and whether it is SEPARATED.
 
-    Zero-length parts are skipped. ``""``, ``''``, ``$''`` and ``$""`` each
-    parse to a ``LiteralPart('')`` that contributes no characters, so they do
-    not separate anything in the emitted text — the formatter merges the whole
-    run of same-quote parts into one region and ``display_text`` drops the
-    quotes entirely. Answering about ``parts[index + 1]`` therefore describes
-    the SOURCE, not the page: with a ``$v`` region, an EMPTY region and an
-    ``x`` region, the syntactically next part is
-    the empty one, while the next part on the page is ``x``, and a ``$v``
-    spelled bare in front of it re-parses as the name ``vx``.
+    THE neighbour rule, so no caller has to assemble it. Two answers, because
+    the renderers need both and neither is derivable from the other:
 
-    Returns ``(None, skipped)`` when nothing after ``index`` prints. The
-    second element matters on its own: a zero-length part is invisible in the
-    emitted text but NOT in the source's meaning, because it stops the name
-    from reaching a following ``{`` (``$v""{1,2}`` is ``${v}1``/``${v}2``,
-    while ``$v{1,2}`` is ``v1``/``v2``) — so a renderer that drops it has to
-    put the braces back.
+    * the next part that actually prints. Zero-length parts are skipped: ``""``,
+      ``''``, ``$''`` and ``$""`` each parse to a ``LiteralPart('')`` that
+      contributes no characters, so they separate nothing in the emitted text —
+      the formatter merges the whole run of same-quote parts into one region,
+      and ``display_text`` drops the quotes entirely. Answering about
+      ``parts[index + 1]`` would describe the SOURCE, not the page: with a
+      ``$v`` region, an EMPTY region and an ``x`` region, the syntactically next
+      part is the empty one while the next part on the page is ``x``, and a
+      ``$v`` spelled bare in front of it re-parses as the name ``vx``.
+    * whether the source kept the two apart with something a rendering may
+      drop — a zero-length part walked past on the way, or a quote boundary on
+      either side. That separator is invisible on the page but NOT in the
+      source's meaning: it stops the name from reaching a following ``{``
+      (``$v""{1,2}`` and ``"$v"{1,2}`` are ``${v}1``/``${v}2``, while
+      ``$v{1,2}`` is ``v1``/``v2``), so a renderer that drops it has to put the
+      braces back. Forward-only: an empty part BEFORE the name, or AFTER the
+      brace list, separates nothing between them and must not brace.
+
+    Returns ``(None, separated)`` when nothing after ``index`` prints.
     """
-    skipped = False
+    separated = bool(getattr(parts[index], 'quoted', False))
     for j in range(index + 1, len(parts)):
         nxt = parts[j]
         if isinstance(nxt, LiteralPart) and not nxt.text:
-            skipped = True
+            separated = True
             continue
-        return nxt, skipped
-    return None, skipped
+        return nxt, separated or bool(getattr(nxt, 'quoted', False))
+    return None, separated
 
 
 def _fuses_with(next_part: Optional[WordPart], separated: bool) -> bool:
