@@ -4,6 +4,46 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.792.0 (2026-09-08) - Process substitution keeps its data and its descriptors (Improvement Program 2026-09, Wave 1 slot 1.13)
+- P0 SILENT DATA LOSS (C082): `>(cmd)` was a named FIFO whose child gave up
+  after a fixed 5 seconds — it opened `/dev/null`, unlinked the FIFO and exited
+  0, so a producer that took longer than that to open the handed-out path got
+  `No such file or directory` and the substitution processed nothing, silently.
+  Both directions are now ONE pipe named `/dev/fd/N`, as bash does on every
+  platform, so the descriptor already exists when the path is handed out and a
+  late open still receives every byte. The FIFO transport, its `SIGALRM` timer,
+  its `/dev/null` fallback and its second cleanup path are deleted.
+- The macOS-only FIFO fallback is gone because its premise was false (C081):
+  bash itself uses `/dev/fd` for the write side on macOS, and a direct syscall
+  probe reopens a pipe's own `/dev/fd` entry for writing — only `O_RDWR` is
+  refused, with `EACCES`. The historical `/dev/fd/63: Operation not permitted`
+  was an execution-environment (sandbox) artifact that hits bash identically,
+  and the environment precondition is now a shell-neutral syscall probe that
+  SKIPS with a named reason instead of failing. Root `CLAUDE.md` and
+  `psh/io_redirect/CLAUDE.md` are corrected to the true platform fact.
+- P1 WRONG TARGET: a substitution's descriptor no longer collides with the
+  consumer's own redirects. The shell's end is moved to the highest free
+  descriptor below 64 (bash's choice, hence `/dev/fd/63`); it used to take the
+  lowest free number, so `cat <(echo a) 3>f` handed `cat` a `/dev/fd/3` its own
+  `3>f` had already replaced, and making the write side pipe-backed would have
+  created a NEW silent-loss path (`exec 4>/dev/null` in the consumer).
+- C091: acquisition is all-or-nothing. Every descriptor and the forked child
+  are owned by one `ExitStack` from the moment they exist, with ownership
+  transferred only on success, so a failure at the pipe, the descriptor move,
+  the close-on-exec change or the fork leaks nothing — proven by fault
+  injection in BOTH directions (the read direction leaked two descriptors at
+  base, C091's recorded harm).
+- Ledger: W1-N68 (`set -C; echo hi > >(cmd)` — bash refuses rc 1 and delivers
+  nothing, psh delivers rc 0) and W1-N74 (under a low `ulimit -n` psh drops an
+  input one substitution before bash) registered, both pre-existing.
+- Verification: adversarial round 1 BOUNCE on three evidence/guard findings
+  (a stale doc symbol; fd-move pins that asserted a band rather than the
+  number, so the `/dev/fd/3` mutation went undetected; a fault matrix that ran
+  only the write direction), round 2 PASS at `d122e162` with the transport
+  byte-identical to the verified tip. The deletion of the FIFO path was tested
+  by rebuilding the sandbox: bash 5.3.15 fails there identically, and a
+  mutation proves the new precondition makes rows FAIL rather than skip.
+
 ## 0.791.0 (2026-09-08) - Usage-error status family follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.3)
 - Usage-error status family follows bash 5.3 (gate rows G30–G31, ledger
   W0-N4/N8/N9/N10/N31 / FLIP-PINS 2.3): `exit`, `shift`, `return`, `cd`,
