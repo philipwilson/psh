@@ -4,6 +4,25 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.797.0 (2026-09-08) - Nightly portability: the C031 golden rows count lines without BSD padding (Improvement Program 2026-09)
+
+- The eleven `c031_*` golden rows counted their expansion-counter file with
+  `wc -l < ctr` and stored the result INCLUDING the leading spaces BSD `wc`
+  right-aligns with. GNU `wc` on Linux emits none, so every row's expectation
+  was host-specific: green on the macOS gate, red on the Linux nightly, on
+  every scheduled run since they shipped in v0.784.0. The rows now count with
+  `awk "END{print NR}" ctr`, which is byte-identical on both platforms, and
+  their expectations drop the padding (keeping the single separator space the
+  `echo "v=$v $(…)"` rows genuinely produce).
+- This is a defect in the ROWS, not in psh: the nightly's own failure text
+  showed Linux producing exactly what psh produces on macOS once the padding is
+  removed. It is the same class as the Wave 0 `od -c` row (BSD vs GNU column
+  layout), and the same remedy — express the observation in a form whose output
+  is platform-neutral rather than pinning one platform's formatting.
+- Found by the D11 backstop rather than by the gate: the local gate compares psh
+  against the same host's bash, so a row that encodes THAT host's coreutils
+  formatting passes on both sides and only a second platform can see it.
+
 ## 0.796.0 (2026-09-08) - Executable round-trip: serialized code re-parses to the same behaviour (Improvement Program 2026-09, Wave 1 slot 1.6)
 - P1 WRONG TARGET AFTER A ROUND TRIP (C033, C231): `declare -f` / `typeset -f` /
   `type` / `command -V` / `export -f` / `--format` / `--debug-ast` /
