@@ -143,7 +143,8 @@
         },
         {
           "id": "1.10",
-          "title": "noexec per statement + bare-cmdsub status"
+          "title": "noexec per statement + bare-cmdsub status",
+          "release": "0.793.0"
         },
         {
           "id": "1.11",
@@ -324,6 +325,28 @@
           ],
           "nightly_watch": "38 write-side node ids (see nightly-status.md)",
           "verification": "r1 BOUNCE (3 evidence/guard findings), r2 PASS at d122e162"
+        },
+        {
+          "version": "0.793.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.10"
+          ],
+          "closes": [
+            "C040",
+            "C041"
+          ],
+          "registers": [
+            "W1-N58",
+            "W1-N73",
+            "W1-N77",
+            "W1-N78",
+            "W1-N79 (unconfirmed)"
+          ],
+          "retired": [
+            "round-1 V-N3 (interactive `$-` lacks `m`) — psh prints `himBHs` at a real controlling terminal at base and tip; the `m` is there once job control is actually available"
+          ],
+          "verification": "r1 BOUNCE (2 blockers incl. a regression), r2 PASS at 08a1b673"
         }
       ]
     },

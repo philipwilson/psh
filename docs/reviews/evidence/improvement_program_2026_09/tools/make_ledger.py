@@ -491,6 +491,8 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C040': ('v0.793.0', 'slot 1.10: per-statement noexec gate consulted after pending traps; interactive refusal scoped by an inherited internal option'),
+    'C041': ('v0.793.0', 'slot 1.10: one null-command status owner incl. the fd-0 fork clause and the background path; historic psh_only golden repaired in place'),
     'C082': ('v0.792.0', 'slot 1.13: one pipe, no FIFO, no give-up timer; late opens receive every byte'),
     'C091': ('v0.792.0', 'slot 1.13: one ExitStack owns every fd and the child, transferred only on success; fault injection both directions'),
     'C081': ('v0.792.0', 'slot 1.13: the macOS FIFO fallback deleted — its premise was false; environment precondition is a shell-neutral syscall probe'),
