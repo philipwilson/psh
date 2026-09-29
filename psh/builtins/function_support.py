@@ -482,12 +482,11 @@ class DeclareBuiltin(Builtin):
             existing = self._existing_in_target_scope(shell, name, options['global'])
             kind_attr = (VarAttributes.ASSOC_ARRAY if as_assoc
                          else VarAttributes.ARRAY)
-            in_function = (bool(shell.state.function_stack)
-                           and not options['global'])
             engine.scalar_append_into_array(
                 name, value, assoc=as_assoc,
                 add_attributes=attributes | kind_attr, existing=existing,
-                local=in_function, global_scope=options['global'])
+                target=(TargetScope.GLOBAL if options['global']
+                        else TargetScope.DEFAULT))
 
         elif scalar_into_array and as_assoc:
             array = AssociativeArray()
@@ -787,15 +786,11 @@ class DeclareBuiltin(Builtin):
         ``psh: declare: NAME: readonly variable`` line. The former re-wrap
         here produced a triple-nested message.
         """
-        # (set_variable fires the scope manager's observer, which keeps
-        # state.env in sync for export-attributed variables)
-        if global_flag:
-            shell.state.scope_manager.set_variable(
-                name, value, attributes=attributes, global_scope=True)
-        else:
-            shell.state.scope_manager.set_variable(
-                name, value, attributes=attributes,
-                local=bool(shell.state.function_stack))
+        # The write door decides ``set -a`` and fires the scope manager's
+        # observer (which keeps state.env in sync for exported variables).
+        shell.state.scope_manager.store.assign(
+            name, value, attributes=attributes,
+            target=(TargetScope.GLOBAL if global_flag else TargetScope.DEFAULT))
 
     def _print_function_definition(self, name, func, shell: 'Shell'):
         """Print a function definition in a format that can be re-executed."""

@@ -240,5 +240,5 @@ class MapfileBuiltin(Builtin):
         for offset, line in enumerate(lines):
             array.set(origin + offset, line)
 
-        shell.state.scope_manager.set_variable(
+        shell.state.scope_manager.store.assign(
             name, array, attributes=VarAttributes.ARRAY)

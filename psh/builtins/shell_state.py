@@ -7,6 +7,7 @@ from ..core import (
     AssociativeArray,
     IndexedArray,
     ReadonlyVariableError,
+    TargetScope,
     VarAttributes,
     resolve_append_assignment,
 )
@@ -493,7 +494,7 @@ class LocalBuiltin(Builtin):
                                                attributes, remove_attrs, options):
                     failed = True
             except ReadonlyVariableError as e:
-                # A value redeclare onto a readonly local: create_local raises,
+                # A value redeclare onto a readonly local: _create_local raises,
                 # we report in bash's shape and keep going. self.error() renders
                 # the SAME `<$0>: line N: local: NAME: readonly variable` line
                 # the last-resort builtin guard printed when this used to
@@ -556,7 +557,9 @@ class LocalBuiltin(Builtin):
                 if not is_valid_nameref_target(var_value, posix_mode):
                     self.error(f"`{var_value}': invalid variable name for name reference", shell)
                     return False
-                shell.state.scope_manager.create_local(var_name, var_value, attributes)
+                shell.state.scope_manager.store.assign(
+                    var_name, var_value, attributes=attributes,
+                    target=TargetScope.LOCAL)
                 return True
 
             # Array initialization is keyed STRICTLY on the parser having
@@ -577,8 +580,9 @@ class LocalBuiltin(Builtin):
                     array_init, assoc=assoc, append=append, existing=existing)
                 kind_attr = (VarAttributes.ASSOC_ARRAY if assoc
                              else VarAttributes.ARRAY)
-                shell.state.scope_manager.create_local(
-                    var_name, array, attributes | kind_attr)
+                shell.state.scope_manager.store.assign(
+                    var_name, array, attributes=attributes | kind_attr,
+                    target=TargetScope.LOCAL)
             else:
                 # Regular variable assignment. The executor has already
                 # expanded this argument; expanding again here would run
@@ -592,7 +596,7 @@ class LocalBuiltin(Builtin):
                     # ``outINNER``). resolve_append_assignment reads the
                     # innermost instance, so gate it on the current scope. It
                     # may return an array object (scalar += onto an array), so
-                    # the value handed to create_local is wider than str.
+                    # the value handed to _create_local is wider than str.
                     cur = shell.state.scope_manager.current_scope.variables.get(var_name)
                     if cur is not None and not cur.is_unset:
                         # Pass the local's being-added flags (``local -i n+=3``)
@@ -602,10 +606,10 @@ class LocalBuiltin(Builtin):
                             shell.state.scope_manager, var_name + '+', var_value,
                             extra_attrs=attributes)
                     # else: fresh local — the raw RHS IS the value (an -i
-                    # flag, if any, is applied by create_local's transform).
+                    # flag, if any, is applied by _create_local's transform).
 
                 # Attribute transforms (-u/-l/-i) are applied by the single
-                # chokepoint in create_local -> ScopeManager._apply_attributes,
+                # chokepoint in _create_local -> ScopeManager._apply_attributes,
                 # NOT here: a second, divergent copy used to run first and
                 # mishandled -ul (it uppercased instead of applying neither).
                 self._create_local_with_removal(
@@ -614,14 +618,18 @@ class LocalBuiltin(Builtin):
             # Variable without assignment: local var
             if attributes & VarAttributes.ARRAY:
                 # Create empty indexed array
-                shell.state.scope_manager.create_local(arg, IndexedArray(), attributes)
+                shell.state.scope_manager.store.assign(
+                    arg, IndexedArray(), attributes=attributes,
+                    target=TargetScope.LOCAL)
             elif attributes & VarAttributes.ASSOC_ARRAY:
                 # Create empty associative array
-                shell.state.scope_manager.create_local(arg, AssociativeArray(), attributes)
+                shell.state.scope_manager.store.assign(
+                    arg, AssociativeArray(), attributes=attributes,
+                    target=TargetScope.LOCAL)
             else:
                 # Declared-but-unset local: shadows any outer variable
                 # but reads as unset (bash: ``local v; echo ${v-u}``
-                # prints ``u``). create_local(value=None) plants the
+                # prints ``u``). a LOCAL-target write with value None plants the
                 # UNSET-attributed variable. ``local +x v`` clears the +attrs.
                 self._create_local_with_removal(
                     shell, arg, None, attributes, remove_attrs)
@@ -630,7 +638,7 @@ class LocalBuiltin(Builtin):
     def _create_local_with_removal(self, shell: 'Shell', name: str,
                                    value: object, add_attrs: 'VarAttributes',
                                    remove_attrs: 'VarAttributes') -> None:
-        """``create_local(name, value, add_attrs)`` then clear ``remove_attrs``
+        """Write the local through the door, then clear ``remove_attrs``
         from the resulting LOCAL (bash's ``local +x``/``+i``/``+n``/... removal).
 
         The removal targets the local: if ``name`` is ALREADY local in this
@@ -639,7 +647,7 @@ class LocalBuiltin(Builtin):
         readonly local raises :class:`ReadonlyVariableError` BEFORE anything can
         mutate (bash: rc 1, readonly and value intact). The r19-T2 bounce
         blocker: tombstones used to route down the fresh-local path, where
-        create_local clobbered the attributes before the removal ran, silently
+        _create_local clobbered the attributes before the removal ran, silently
         STRIPPING readonly (``local -r v; local +r v`` must instead report
         ``local: v: readonly variable``). Strip-first also means a value is
         transformed with the POST-removal attributes (bash removes the
@@ -647,7 +655,7 @@ class LocalBuiltin(Builtin):
         literally, not the evaluated ``5``).
 
         A tombstone ATTRS-ONLY redeclare (no value) is mutated IN PLACE
-        (remove + apply): create_local's fresh path (a tombstone is not a
+        (remove + apply): _create_local's fresh path (a tombstone is not a
         ``redeclare``) would REPLACE the cell and drop its remaining attributes
         (``local -rx e; local +x e`` must keep readonly — bash ``declare -r e``).
 
@@ -658,7 +666,8 @@ class LocalBuiltin(Builtin):
         """
         sm = shell.state.scope_manager
         if not remove_attrs:
-            sm.create_local(name, value, add_attrs)
+            sm.store.assign(name, value, attributes=add_attrs,
+                            target=TargetScope.LOCAL)
             return
         cur = sm.current_scope.variables.get(name)
         if cur is not None:
@@ -668,9 +677,11 @@ class LocalBuiltin(Builtin):
                 if add_attrs:
                     sm.apply_attribute(name, add_attrs)
                 return
-            sm.create_local(name, value, add_attrs)
+            sm.store.assign(name, value, attributes=add_attrs,
+                            target=TargetScope.LOCAL)
             return
-        sm.create_local(name, value, add_attrs)
+        sm.store.assign(name, value, attributes=add_attrs,
+                        target=TargetScope.LOCAL)
         sm.remove_attribute(name, remove_attrs)
 
     def _save_dash_options(self, shell: 'Shell') -> None:

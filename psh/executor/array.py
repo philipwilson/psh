@@ -82,7 +82,7 @@ class ArrayOperationExecutor:
             # the ARRAY (indexed) bit. Merging both left a stray ``-a`` on the
             # variable, so ``declare -p`` printed ``declare -aA`` (bash: ``-A``),
             # which does not round-trip back into either shell.
-            self.state.scope_manager.set_variable(
+            self.state.scope_manager.store.assign(
                 name, assoc, attributes=VarAttributes.ASSOC_ARRAY)
             return 0
 
@@ -93,7 +93,7 @@ class ArrayOperationExecutor:
         self._apply_declared_case_integer(name, indexed)
 
         # Set array in shell state
-        self.state.scope_manager.set_variable(name, indexed, attributes=VarAttributes.ARRAY)
+        self.state.scope_manager.store.assign(name, indexed, attributes=VarAttributes.ARRAY)
         return 0
 
     def _apply_declared_case_integer(self, name: str,
@@ -317,11 +317,11 @@ class ArrayOperationExecutor:
             if is_numeric_index:
                 # Numeric index, create indexed array
                 array = IndexedArray()
-                self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY)
+                self.state.scope_manager.store.assign(name, array, attributes=VarAttributes.ARRAY)
             else:
                 # String index, create associative array
                 array = AssociativeArray()
-                self.state.scope_manager.set_variable(name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
+                self.state.scope_manager.store.assign(name, array, attributes=VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY)
 
         # Read the attributes from the variable AS IT EXISTS NOW, after the
         # array was (created and) populated above. The pre-creation var_obj

@@ -447,7 +447,7 @@ class ReadBuiltin(Builtin):
                 array.set(i, field)
 
         # Set the array in shell state
-        shell.state.scope_manager.set_variable(array_name, array, attributes=VarAttributes.ARRAY)
+        shell.state.scope_manager.store.assign(array_name, array, attributes=VarAttributes.ARRAY)
 
     # Flag options set a boolean; arg options consume a value.
     _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
