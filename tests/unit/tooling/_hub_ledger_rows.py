@@ -65,13 +65,13 @@ LEDGER = {
          'Arms are one-liners already, the length is the six-way declaration '
          'cross-product'),
     ('psh/core/scope.py',
-     'ScopeManager.create_local'):
+     'ScopeManager._create_local'):
         ('JUSTIFIED-KEEP',
          '46 exec under 67 comment lines; four readonly rejections are '
          'scattered but each cites a distinct bash rule — consolidation is a '
          'behaviour-risk edit, not a move'),
     ('psh/core/scope.py',
-     'ScopeManager.set_variable'):
+     'ScopeManager._set_variable'):
         ('JUSTIFIED-KEEP',
          'Five early-return write routes whose ORDER is the masking '
          'semantics (nameref/temp-env/dynamic-special); pinned by the '

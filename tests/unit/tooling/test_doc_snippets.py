@@ -83,8 +83,8 @@ REGISTRY = [
         "doc": "psh/core/CLAUDE.md",
         "source": "psh/core/state.py",
         "fragments": [
-            "self.scope_manager = ScopeManager()",
             "self.options = ShellOptions(overrides={",
+            "self.scope_manager = ScopeManager(options=self.options)",
             "self.execution = ExecutionState()",
             "self.env = os.environ.copy()",
         ],

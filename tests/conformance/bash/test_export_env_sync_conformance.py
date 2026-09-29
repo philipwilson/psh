@@ -575,3 +575,262 @@ class TestExportPrintListing(ConformanceTest):
     def test_named_export_p_prints_nothing(self):
         # `export -p NAME` treats NAME as an export operand, not a print target.
         self.assert_identical_behavior('export ZZQ; export -p ZZQ; echo end')
+
+
+class TestAllexportDeclarationFamily:
+    """``set -a`` is decided ONCE, at the variable write door (C028, slot 1.16).
+
+    Before slot 1.16 only the plain-assignment path consulted ``allexport``, so
+    ``declare``/``typeset``/``local``/``readonly`` silently skipped the export
+    and a child process never received the value. The owner is now
+    ``psh/core/variable_store.py#VariableStore._allexport_attributes``: a SCALAR
+    given a VALUE is exported through every spelling; a value-less declaration
+    is exported only when it creates a new GLOBAL; arrays, dynamic specials and
+    attribute-only changes to an existing variable never are. Every row is a
+    PARITY pin against bash 5.3.15 in ``-c``, script-file and stdin modes (D6),
+    and the target asserted is what the CHILD actually receives (``printenv``,
+    D3) beside ``declare -p``.
+    """
+
+    # -- scalars with a value: every spelling exports ---------------------------
+
+    def test_local_with_value_reaches_the_child(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local L=1; printenv L; declare -p L; }; f',
+            tmp_path=tmp_path)
+
+    def test_declare_with_value_reaches_the_child(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare D=1; printenv D; declare -p D', tmp_path=tmp_path)
+
+    def test_declare_in_function_reaches_the_child(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare D=1; printenv D; declare -p D; }; f',
+            tmp_path=tmp_path)
+
+    def test_typeset_with_value_reaches_the_child(self, tmp_path):
+        _parity_in_modes(
+            'set -a; typeset T=1; printenv T; declare -p T', tmp_path=tmp_path)
+
+    def test_readonly_with_value_reaches_the_child(self, tmp_path):
+        _parity_in_modes(
+            'set -a; readonly R=1; printenv R; declare -p R', tmp_path=tmp_path)
+
+    def test_declare_i_evaluates_and_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -i n=2+3; printenv n; declare -p n', tmp_path=tmp_path)
+
+    def test_local_i_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local -i li=1; printenv li; declare -p li; }; f',
+            tmp_path=tmp_path)
+
+    def test_declare_g_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare -g g=1; }; f; printenv g; declare -p g',
+            tmp_path=tmp_path)
+
+    def test_nameref_definition_is_exported_itself(self, tmp_path):
+        _parity_in_modes(
+            'set -a; x=0; declare -n r=x; declare -p r x', tmp_path=tmp_path)
+
+    def test_write_through_nameref_exports_the_target(self, tmp_path):
+        _parity_in_modes(
+            'x=0; declare -n r=x; set -a; r=1; printenv x; declare -p x r',
+            tmp_path=tmp_path)
+
+    def test_local_shadowing_caller_name_exports_the_local(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local V=inner; printenv V; }; V=outer; f; printenv V',
+            tmp_path=tmp_path)
+
+    # -- value-less declarations: only a NEW GLOBAL exports ---------------------
+
+    def test_valueless_declare_at_top_level_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare y; declare -p y; y=1; printenv y', tmp_path=tmp_path)
+
+    def test_valueless_declare_g_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare -g y; }; f; declare -p y', tmp_path=tmp_path)
+
+    def test_valueless_readonly_exports(self, tmp_path):
+        _parity_in_modes('set -a; readonly r; declare -p r', tmp_path=tmp_path)
+
+    def test_valueless_typeset_r_exports(self, tmp_path):
+        _parity_in_modes('set -a; typeset -r r; declare -p r', tmp_path=tmp_path)
+
+    def test_valueless_local_does_not_export(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local x; declare -p x; printenv x; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_valueless_declare_in_function_does_not_export(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare x; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_valueless_declare_export_survives_set_plus_a(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare y; set +a; y=1; printenv y; declare -p y',
+            tmp_path=tmp_path)
+
+    def test_attribute_on_missing_nameref_target_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -n r=missing; declare -i r; declare -p missing',
+            tmp_path=tmp_path)
+
+    # -- never exported: arrays, dynamic specials, attribute-only changes -------
+
+    def test_array_assignment_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; a=(1 2); declare -p a; printenv a; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_declare_a_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -a b=(1); declare -p b; printenv b; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_declare_A_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -A c=([k]=v); declare -p c; printenv c; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_read_a_not_exported(self, tmp_path):
+        _parity_in_modes(
+            "set -a; read -a arr <<< '1 2'; declare -p arr", tmp_path=tmp_path)
+
+    def test_mapfile_not_exported(self, tmp_path):
+        _parity_in_modes(
+            "set -a; mapfile -t m <<< '1'; declare -p m", tmp_path=tmp_path)
+
+    def test_dynamic_special_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; RANDOM=5; declare -p RANDOM | cut -d= -f1; printenv RANDOM; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_attribute_only_declare_r_on_existing_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'x=1; set -a; declare -r x; declare -p x; printenv x; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_attribute_only_readonly_on_existing_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'x=1; set -a; readonly x; declare -p x', tmp_path=tmp_path)
+
+    def test_attribute_only_declare_i_on_existing_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'x=1; set -a; declare -i x; declare -p x', tmp_path=tmp_path)
+
+    # -- explicit un-export vs allexport ordering -------------------------------
+
+    def test_export_n_with_value_ends_unexported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; export -n e=1; declare -p e; printenv e; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_declare_plus_x_with_value_still_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare +x e=1; declare -p e; printenv e', tmp_path=tmp_path)
+
+    # -- inheritance and toggling ----------------------------------------------
+
+    def test_allexport_inherited_by_subshell(self, tmp_path):
+        _parity_in_modes(
+            'set -a; ( declare z=1; printenv z; declare -p z )', tmp_path=tmp_path)
+
+    def test_allexport_inherited_by_command_substitution(self, tmp_path):
+        _parity_in_modes(
+            'set -a; echo "$(declare z=1; printenv z)"', tmp_path=tmp_path)
+
+    def test_set_plus_a_between_declarations(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare a=1; set +a; declare b=2; declare -p a b; printenv b; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_allexport_with_temp_env_prefix(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare -p X; printenv X; }; X=1 f; echo "${X-unset}"',
+            tmp_path=tmp_path)
+
+    def test_allexport_write_through_to_temp_env_layer(self, tmp_path):
+        _parity_in_modes(
+            'set -a; G=g; G=t eval "G=new; declare -p G"; declare -p G',
+            tmp_path=tmp_path)
+
+
+class TestLocalTombstoneAttributeMerge:
+    """A declared-but-unset local keeps its attributes across a redeclare
+    (W1-N18, slot 1.16). Owner: ``psh/core/scope.py#ScopeManager._create_local``.
+
+    ``local -u x; local -x x`` shows ``declare -xu x`` (the tombstone merges),
+    ``local -r x; local -x x`` keeps READONLY, and a later VALUE redeclare
+    still applies the tombstone's ``-u`` / ``-i`` transform. Parity in three
+    modes against bash 5.3.15.
+    """
+
+    def test_valueless_redeclare_merges_case_attribute(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -u x; local -x x; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_valueless_redeclare_keeps_readonly(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -r x; local -x x; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_valueless_redeclare_adds_integer_to_case(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -u x; local -i x; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_value_redeclare_applies_tombstone_case_attribute(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -u x; local x=hi; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_value_redeclare_applies_tombstone_integer_attribute(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -i x; local x=2+3; declare -p x; }; f', tmp_path=tmp_path)
+
+    def test_value_redeclare_keeps_tombstone_export(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -x x; local x=v; declare -p x; printenv x; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_created_tombstone_starts_fresh(self, tmp_path):
+        """``local x; unset x`` strips the attributes, so a later ``local x=v``
+        starts fresh — the pre-existing semantics, pinned as the boundary."""
+        _parity_in_modes(
+            'f(){ local -u x=a; unset x; local x=hi; declare -p x; }; f',
+            tmp_path=tmp_path)
+
+
+class TestAllexportDeclaredDivergences:
+    """Two both-sides pins for behaviour slot 1.16 deliberately did NOT adopt.
+
+    ``psh -a`` (the invocation flag) does not export the shell's own startup
+    seeds (``PS4``, ``OPTIND``, ...) the way ``bash -a`` does: psh seeds them
+    before the invocation flags are applied. Declared divergence, ledger row
+    named in the release. ``export -f`` never reaches a child (no
+    ``BASH_FUNC_name%%`` serialisation): documented as unsupported (W1-N26).
+    """
+
+    @pytest.mark.oracle_min("5.3")
+    def test_invocation_flag_a_does_not_export_startup_seeds(self, tmp_path):
+        for argv in (['-a', '-c', 'declare -p PS4 OPTIND'],):
+            b = run_bash(argv)
+            p = run_psh(argv)
+            assert is_comparable(b) and is_comparable(p), (b, p)
+            assert (b.stdout, b.returncode) == (
+                'declare -x PS4="+ "\ndeclare -ix OPTIND="1"\n', 0), (
+                "ORACLE side moved (oracle drift -> re-baseline)", b)
+            assert (p.stdout, p.returncode) == (
+                'declare -- PS4="+ "\ndeclare -- OPTIND="1"\n', 0), (
+                "PSH side moved (startup seeds now exported under -a? flip this row)", p)
+        # A user assignment under the same flag IS exported on both sides.
+        b = run_bash(['-a', '-c', 'x=1; printenv x'])
+        p = run_psh(['-a', '-c', 'x=1; printenv x'])
+        assert (p.stdout, p.returncode) == (b.stdout, b.returncode) == ('1\n', 0)
+
+    def test_export_f_does_not_reach_the_child(self, tmp_path):
+        assert_declared_divergence(
+            'f(){ :; }; export -f f; env | grep -c ^BASH_FUNC_f',
+            bash=('1\n', 0), psh=('0\n', 1), tmp_path=tmp_path,
+            slot='1.16 (W1-N26, documented as unsupported)', stderr=None)

@@ -83,8 +83,8 @@ class TestAppend:
         sm = shell.state.scope_manager
         sm.push_scope("f")
         try:
-            sm.create_local("x", "L")
-            _store(shell).append("x", "A", global_scope=True)
+            sm.store.assign("x", "L", target=TargetScope.LOCAL)
+            _store(shell).append("x", "A", target=TargetScope.GLOBAL)
             # Local shadow untouched; global updated from its own base.
             assert sm.current_scope.variables["x"].value == "L"
             assert sm.global_scope.variables["x"].value == "GA"
@@ -96,8 +96,8 @@ class TestAppend:
         sm = shell.state.scope_manager
         sm.push_scope("f")
         try:
-            sm.create_local("n", "1")
-            _store(shell).append("n", "5", global_scope=True)
+            sm.store.assign("n", "1", target=TargetScope.LOCAL)
+            _store(shell).append("n", "5", target=TargetScope.GLOBAL)
             assert sm.global_scope.variables["n"].value == "105"
         finally:
             sm.pop_scope()
@@ -166,20 +166,6 @@ class TestUnsetElement:
         with pytest.raises(ReadonlyVariableError):
             _store(shell).unset_element("a", 0)
         assert _obj(shell, "a").value.all_elements() == ["x", "y"]
-
-
-class TestResolveWriteFlags:
-    def test_global(self):
-        assert VariableStore.resolve_write_flags(TargetScope.GLOBAL, True) == (False, True)
-
-    def test_local(self):
-        assert VariableStore.resolve_write_flags(TargetScope.LOCAL, False) == (True, False)
-
-    def test_default_in_function_is_local(self):
-        assert VariableStore.resolve_write_flags(TargetScope.DEFAULT, True) == (True, False)
-
-    def test_default_top_level_is_global(self):
-        assert VariableStore.resolve_write_flags(TargetScope.DEFAULT, False) == (False, False)
 
 
 def test_child_shell_store_is_independent():

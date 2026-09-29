@@ -161,7 +161,7 @@ class TestAppendComputationIsPure:
         arr = IndexedArray()
         arr.set(0, "1")
         arr.set(1, "2")
-        sm.set_variable("a", arr, attributes=VarAttributes.ARRAY)
+        sm.store.assign("a", arr, attributes=VarAttributes.ARRAY)
         base = sm.get_variable_object("a")
         result = sm.store.compute_append_value(base, "x")
         # The live container is untouched; the result is an independent copy.
@@ -175,7 +175,7 @@ class TestAppendComputationIsPure:
         the shared formula returns "8", not the expression "(5)+(3)", so every
         commit path (incl. temp-env, which does not re-transform) is correct."""
         sm = captured_shell.state.scope_manager
-        sm.set_variable("n", "5", attributes=VarAttributes.INTEGER)
+        sm.store.assign("n", "5", attributes=VarAttributes.INTEGER)
         base = sm.get_variable_object("n")
         assert sm.store.compute_append_value(base, "3") == "8"
 
@@ -183,7 +183,7 @@ class TestAppendComputationIsPure:
         """A fresh -i (extra_attrs) makes the append arithmetic even when the
         base is a plain string (the `declare -i n+=3` / `local -i n+=3` fix)."""
         sm = captured_shell.state.scope_manager
-        sm.set_variable("n", "2")  # plain string, no integer attr
+        sm.store.assign("n", "2")  # plain string, no integer attr
         base = sm.get_variable_object("n")
         assert sm.store.compute_append_value(
             base, "3", extra_attrs=VarAttributes.INTEGER) == "5"
@@ -199,7 +199,7 @@ class TestAppendComputationIsPure:
         arr = IndexedArray()
         arr.set(0, "1")
         arr.set(1, "2")
-        sm.set_variable("a", arr, attributes=VarAttributes.ARRAY)  # no -i
+        sm.store.assign("a", arr, attributes=VarAttributes.ARRAY)  # no -i
         base = sm.get_variable_object("a")
         result = sm.store.compute_append_value(
             base, "10", extra_attrs=VarAttributes.INTEGER)

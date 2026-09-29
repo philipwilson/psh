@@ -12,8 +12,8 @@ from psh.core.variables import VarAttributes
 
 def _mgr_with_nameref():
     mgr = ScopeManager()
-    mgr.set_variable('x', '5')
-    mgr.set_variable('r', 'x', attributes=VarAttributes.NAMEREF)
+    mgr.store.assign('x', '5')
+    mgr.store.assign('r', 'x', attributes=VarAttributes.NAMEREF)
     return mgr
 
 
@@ -46,8 +46,8 @@ class TestRemoveAttributeResolvesNameref:
 class TestNamerefAttributeDoesNotResolve:
     def test_setting_nameref_attribute_targets_the_cell(self):
         mgr = ScopeManager()
-        mgr.set_variable('x', '5')
-        mgr.set_variable('r', 'x', attributes=VarAttributes.NAMEREF)
+        mgr.store.assign('x', '5')
+        mgr.store.assign('r', 'x', attributes=VarAttributes.NAMEREF)
         # Re-applying NAMEREF must stay on r (not resolve to x).
         mgr.apply_attribute('r', VarAttributes.NAMEREF)
         assert mgr.get_variable_object('r').is_nameref
@@ -56,14 +56,14 @@ class TestNamerefAttributeDoesNotResolve:
 
     def test_removing_nameref_attribute_targets_the_cell(self):
         mgr = ScopeManager()
-        mgr.set_variable('x', '5')
-        mgr.set_variable('r', 'x', attributes=VarAttributes.NAMEREF)
+        mgr.store.assign('x', '5')
+        mgr.store.assign('r', 'x', attributes=VarAttributes.NAMEREF)
         mgr.remove_attribute('r', VarAttributes.NAMEREF)
         assert not mgr.get_variable_object('r').is_nameref
 
     def test_non_nameref_name_resolves_to_itself(self):
         mgr = ScopeManager()
-        mgr.set_variable('plain', 'v')
+        mgr.store.assign('plain', 'v')
         mgr.apply_attribute('plain', VarAttributes.INTEGER)
         assert mgr.get_variable_object('plain').is_integer
 

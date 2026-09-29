@@ -194,6 +194,57 @@ _GREEN_VALUE_CELLS: Tuple[Cell, ...] = (
          'rc=1\ndeclare -r x="1"\n', err="x: readonly variable"),
     Cell("read", "flags", "allexport-applies-to-read",
          "set -a; read v <<< 'x'; declare -p v", 'declare -x v="x"\n'),
+    # --- allexport at the write door (C028, slot 1.16): the bash 5.3 rule ------
+    Cell("declare", "flags", "allexport-marks-valueless-global-declare",
+         'set -a; declare y; declare -p y', 'declare -x y\n'),
+    Cell("declare", "flags", "allexport-marks-valueless-declare-g",
+         'set -a; declare -g y; declare -p y', 'declare -x y\n'),
+    Cell("declare", "flags", "allexport-marks-declare-g-value",
+         'set -a; declare -g g=1; declare -p g', 'declare -x g="1"\n'),
+    Cell("declare", "flags", "allexport-marks-valueless-readonly",
+         'set -a; readonly r; declare -p r', 'declare -rx r\n'),
+    Cell("declare", "flags", "allexport-marks-valueless-typeset-r",
+         'set -a; typeset -r r; declare -p r', 'declare -rx r\n'),
+    Cell("declare", "flags", "allexport-marks-local-i",
+         'set -a; f(){ local -i li=1; declare -p li; }; f', 'declare -ix li="1"\n'),
+    Cell("declare", "flags", "allexport-marks-nameref-definition",
+         'set -a; x=0; declare -n r=x; declare -p r x',
+         'declare -nx r="x"\ndeclare -x x="0"\n'),
+    Cell("declare", "flags", "allexport-marks-missing-nameref-target",
+         'set -a; declare -n r=missing; declare -i r; declare -p missing',
+         'declare -ix missing\n'),
+    Cell("nameref", "flags", "allexport-follows-nameref-to-target",
+         'x=0; declare -n r=x; set -a; r=1; declare -p x r',
+         'declare -x x="1"\ndeclare -n r="x"\n'),
+    Cell("declare", "flags", "allexport-valueless-declare-then-assignment",
+         'set -a; declare y; set +a; y=1; declare -p y', 'declare -x y="1"\n'),
+    Cell("declare", "flags", "allexport-skips-valueless-local",
+         'set -a; f(){ local x; declare -p x; }; f', 'declare -- x\n'),
+    Cell("declare", "flags", "allexport-skips-valueless-declare-in-function",
+         'set -a; f(){ declare x; declare -p x; }; f', 'declare -- x\n'),
+    Cell("declare", "flags", "allexport-skips-attribute-only-declare-r",
+         'x=1; set -a; declare -r x; declare -p x', 'declare -r x="1"\n'),
+    Cell("declare", "flags", "allexport-skips-attribute-only-readonly",
+         'x=1; set -a; readonly x; declare -p x', 'declare -r x="1"\n'),
+    Cell("declare", "flags", "allexport-skips-declare-a",
+         'set -a; declare -a b=(1); declare -p b', 'declare -a b=([0]="1")\n'),
+    Cell("declare", "flags", "allexport-skips-declare-A",
+         'set -a; declare -A c=([k]=v); declare -p c', 'declare -A c=([k]="v" )\n'),
+    Cell("mapfile", "flags", "allexport-skips-mapfile-array",
+         "set -a; mapfile -t m <<< '1'; declare -p m", 'declare -a m=([0]="1")\n'),
+    Cell("declare", "flags", "allexport-export-n-with-value-ends-unexported",
+         'set -a; export -n e=1; declare -p e', 'declare -- e="1"\n'),
+    Cell("declare", "flags", "allexport-declare-plus-x-with-value-still-exports",
+         'set -a; declare +x e=1; declare -p e', 'declare -x e="1"\n'),
+    # --- local tombstone attribute merge (W1-N18, slot 1.16) -----------------
+    Cell("declare", "flags", "local-tombstone-keeps-attributes-on-valueless-redeclare",
+         'f(){ local -u x; local -x x; declare -p x; }; f', 'declare -xu x\n'),
+    Cell("declare", "flags", "local-tombstone-keeps-readonly-on-valueless-redeclare",
+         'f(){ local -r x; local -x x; declare -p x; }; f', 'declare -rx x\n'),
+    Cell("declare", "value", "local-tombstone-case-attribute-applies-to-later-value",
+         'f(){ local -u x; local x=hi; declare -p x; }; f', 'declare -u x="HI"\n'),
+    Cell("declare", "value", "local-tombstone-integer-attribute-applies-to-later-value",
+         'f(){ local -i x; local x=2+3; declare -p x; }; f', 'declare -i x="5"\n'),
     Cell("mapfile", "value", "indexed-target",
          "mapfile -t m <<< $'a\\nb'; declare -p m",
          'declare -a m=([0]="a" [1]="b")\n'),
@@ -230,23 +281,18 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
          ' set -u; f',
          '', NONZERO, err="FOO: unbound variable", owner="C027 → slot 1.15"),
 
-    # C028 — allexport is consumed at ONE site that only plain assignment
-    # reaches, so the four declaration builtins never mark the export flag.
-    Cell("declare", "flags", "allexport-marks-local-C028-slot1.16",
-         'set -a; f(){ local L=1; declare -p L; }; f', 'declare -x L="1"\n',
-         owner="C028 → slot 1.16"),
-    Cell("declare", "flags", "allexport-marks-declare-C028-slot1.16",
-         'set -a; f(){ declare L=1; declare -p L; }; f', 'declare -x L="1"\n',
-         owner="C028 → slot 1.16"),
-    Cell("declare", "flags", "allexport-marks-readonly-C028-slot1.16",
-         'set -a; readonly R=1; declare -p R', 'declare -rx R="1"\n',
-         owner="C028 → slot 1.16"),
-    Cell("declare", "flags", "allexport-marks-declare-i-C028-slot1.16",
-         'set -a; declare -i n=5; declare -p n', 'declare -ix n="5"\n',
-         owner="C028 → slot 1.16"),
-    Cell("declare", "flags", "allexport-marks-typeset-C028-slot1.16",
-         'set -a; typeset T=1; declare -p T', 'declare -x T="1"\n',
-         owner="C028 → slot 1.16"),
+    # C028 (closed by slot 1.16) — allexport used to be consumed at ONE site
+    # that only plain assignment reached; the write door now decides it once.
+    Cell("declare", "flags", "allexport-marks-local",
+         'set -a; f(){ local L=1; declare -p L; }; f', 'declare -x L="1"\n'),
+    Cell("declare", "flags", "allexport-marks-declare",
+         'set -a; f(){ declare L=1; declare -p L; }; f', 'declare -x L="1"\n'),
+    Cell("declare", "flags", "allexport-marks-readonly",
+         'set -a; readonly R=1; declare -p R', 'declare -rx R="1"\n'),
+    Cell("declare", "flags", "allexport-marks-declare-i",
+         'set -a; declare -i n=5; declare -p n', 'declare -ix n="5"\n'),
+    Cell("declare", "flags", "allexport-marks-typeset",
+         'set -a; typeset T=1; declare -p T', 'declare -x T="1"\n'),
 
     # C090 — mapfile writes before validating its destination, so an assoc
     # target is replaced and ends up carrying both array attributes.
@@ -642,6 +688,23 @@ _GREEN_CHILD_CELLS: Tuple[Cell, ...] = (
          'export E=1; unset E; printenv E; echo "rc=$?"', 'rc=1\n'),
     Cell("declare", "child-env", "export-n-removes-it-from-the-child",
          'export E=1; export -n E; printenv E; echo "rc=$?"', 'rc=1\n'),
+    # --- allexport at the write door (C028, slot 1.16) -------------------------
+    Cell("declare", "child-env", "allexport-typeset-reaches-the-child",
+         'set -a; typeset T=1; printenv T; echo "rc=$?"', '1\nrc=0\n'),
+    Cell("declare", "child-env", "allexport-declare-i-reaches-the-child",
+         'set -a; declare -i n=5; printenv n; echo "rc=$?"', '5\nrc=0\n'),
+    Cell("declare", "child-env", "allexport-valueless-declare-then-assignment-reaches-the-child",
+         'set -a; declare y; y=1; printenv y; echo "rc=$?"', '1\nrc=0\n'),
+    Cell("declare", "child-env", "allexport-array-does-not-reach-the-child",
+         'set -a; declare -a arr=(1); printenv arr; echo "rc=$?"', 'rc=1\n'),
+    Cell("declare", "child-env", "allexport-export-n-does-not-reach-the-child",
+         'set -a; export -n e=1; printenv e; echo "rc=$?"', 'rc=1\n'),
+    Cell("declare", "child-env", "allexport-valueless-local-does-not-reach-the-child",
+         'set -a; f(){ local x; printenv x; echo "rc=$?"; }; f', 'rc=1\n'),
+    Cell("declare", "child-env", "allexport-subshell-declare-reaches-the-child",
+         'set -a; ( declare z=1; printenv z; echo "rc=$?" )', '1\nrc=0\n'),
+    Cell("assign", "child-env", "allexport-dynamic-special-does-not-reach-the-child",
+         'set -a; RANDOM=5; printenv RANDOM; echo "rc=$?"', 'rc=1\n'),
 
     # --- executable dispatch -------------------------------------------------
     Cell("assign", "dispatch", "plain-PATH-write-changes-the-executable",
@@ -660,17 +723,15 @@ _GREEN_CHILD_CELLS: Tuple[Cell, ...] = (
 )
 
 _FLIP_CHILD_CELLS: Tuple[Cell, ...] = (
-    # C028 — the declaration builtins skip allexport, so the child genuinely
-    # never receives the variable (printenv exits 1 and prints nothing).
-    Cell("declare", "child-env", "allexport-local-reaches-the-child-C028-slot1.16",
+    # C028 (closed by slot 1.16) — the declaration builtins used to skip
+    # allexport, so the child genuinely never received the variable.
+    Cell("declare", "child-env", "allexport-local-reaches-the-child",
          'set -a; f(){ local L=1; printenv L; }; f; echo "rc=$?"',
-         '1\nrc=0\n', owner="C028 → slot 1.16"),
-    Cell("declare", "child-env", "allexport-declare-reaches-the-child-C028-slot1.16",
-         'set -a; declare D=1; printenv D; echo "rc=$?"', '1\nrc=0\n',
-         owner="C028 → slot 1.16"),
-    Cell("declare", "child-env", "allexport-readonly-reaches-the-child-C028-slot1.16",
-         'set -a; readonly R=1; printenv R; echo "rc=$?"', '1\nrc=0\n',
-         owner="C028 → slot 1.16"),
+         '1\nrc=0\n'),
+    Cell("declare", "child-env", "allexport-declare-reaches-the-child",
+         'set -a; declare D=1; printenv D; echo "rc=$?"', '1\nrc=0\n'),
+    Cell("declare", "child-env", "allexport-readonly-reaches-the-child",
+         'set -a; readonly R=1; printenv R; echo "rc=$?"', '1\nrc=0\n'),
 
     # C044 (closed by slot 1.5) — the effective PATH binding changes when the
     # function scope pops, and the command hash table is told, so the NEXT
@@ -820,10 +881,10 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          'export FOO=outer; f(){ local FOO; echo "[${FOO}]"; }; set -u; f',
          '', NONZERO, err="FOO: unbound variable", owner="C027 → slot 1.15"),
 
-    # C028 in every input mode: what the child actually receives.
-    Cell("declare", "child-env", "allexport-local-reaches-child-C028-slot1.16",
+    # C028 (closed by slot 1.16) in every input mode: what the child receives.
+    Cell("declare", "child-env", "allexport-local-reaches-child",
          'set -a; f(){ local L=1; printenv L; }; f; echo "rc=$?"',
-         '1\nrc=0\n', owner="C028 → slot 1.16"),
+         '1\nrc=0\n'),
 
     # In every input mode: a readonly variable refuses an attribute that would
     # change how a future value is stored (was G17, closed by slot 2.4).

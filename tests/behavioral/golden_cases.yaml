@@ -12336,3 +12336,168 @@
   stdout: "A B\nA B\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# ALLEXPORT AT THE WRITE DOOR (C028, slot 1.16)
+#
+# `set -a` used to be consumed only by the plain-assignment path, so the
+# declaration builtins (declare/typeset/local/readonly) never marked the export
+# and a child genuinely did not receive the value.  The decision now lives once,
+# in VariableStore.assign (psh/core/variable_store.py), which every
+# whole-variable write crosses.  Rule (bash 5.3.15): a scalar given a value is
+# exported through every spelling; a value-less declaration exports only when
+# it creates a new GLOBAL; arrays, dynamic specials and attribute-only changes
+# to an existing variable never do.  Verified against bash 5.3.15.
+# =============================================================================
+
+- name: c028_local_with_value_reaches_child
+  description: "C028: set -a; local L=1 inside a function is exported to the child"
+  command: 'set -a; f(){ local L=1; printenv L; declare -p L; }; f'
+  stdout: "1\ndeclare -x L=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_declare_with_value_reaches_child
+  description: "C028: set -a; declare D=1 is exported"
+  command: 'set -a; declare D=1; printenv D; declare -p D'
+  stdout: "1\ndeclare -x D=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_readonly_with_value_reaches_child
+  description: "C028: set -a; readonly R=1 gains -x too"
+  command: 'set -a; readonly R=1; printenv R; declare -p R'
+  stdout: "1\ndeclare -rx R=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_typeset_with_value_reaches_child
+  description: "C028: set -a; typeset T=1 is exported"
+  command: 'set -a; typeset T=1; printenv T; declare -p T'
+  stdout: "1\ndeclare -x T=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_declare_i_exports
+  description: "C028: set -a; declare -i n=2+3 evaluates and exports"
+  command: 'set -a; declare -i n=2+3; printenv n; declare -p n'
+  stdout: "5\ndeclare -ix n=\"5\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_declare_g_exports
+  description: "C028: set -a; declare -g from inside a function exports the global"
+  command: 'set -a; f(){ declare -g g=1; }; f; printenv g; declare -p g'
+  stdout: "1\ndeclare -x g=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_valueless_declare_at_top_level_exports
+  description: "C028: set -a; declare y (no value) creates an exported global; a later assignment fills the env entry"
+  command: 'set -a; declare y; declare -p y; set +a; y=1; printenv y'
+  stdout: "declare -x y\n1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_valueless_local_not_exported
+  description: "C028: set -a; a value-less local is NOT exported (bash exports only a new global)"
+  command: 'set -a; f(){ local x; declare -p x; }; f'
+  stdout: "declare -- x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_nameref_definition_exported
+  description: "C028: set -a; declare -n r=x marks the reference itself -nx"
+  command: 'set -a; x=0; declare -n r=x; declare -p r x'
+  stdout: "declare -nx r=\"x\"\ndeclare -x x=\"0\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_write_through_nameref_exports_target
+  description: "C028: set -a; a write through a nameref exports the TARGET, not the reference"
+  command: 'x=0; declare -n r=x; set -a; r=1; declare -p x r'
+  stdout: "declare -x x=\"1\"\ndeclare -n r=\"x\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_attribute_only_change_not_exported
+  description: "C028: set -a; declare -r on an EXISTING variable does not export it (attribute-only change)"
+  command: 'x=1; set -a; declare -r x; declare -p x'
+  stdout: "declare -r x=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_arrays_never_exported
+  description: "C028: set -a; declare -a / declare -A / a=() never gain -x"
+  command: 'set -a; declare -a b=(1); declare -A c=([k]=v); d=(1 2); declare -p b c d'
+  stdout: "declare -a b=([0]=\"1\")\ndeclare -A c=([k]=\"v\" )\ndeclare -a d=([0]=\"1\" [1]=\"2\")\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_export_n_with_value_ends_unexported
+  description: "C028: set -a; export -n e=1 assigns then un-exports (bash order)"
+  command: 'set -a; export -n e=1; declare -p e'
+  stdout: "declare -- e=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_declare_plus_x_with_value_still_exports
+  description: "C028: set -a; declare +x e=1 removes +x BEFORE the assignment, so allexport still marks it (bash quirk, matched)"
+  command: 'set -a; declare +x e=1; declare -p e'
+  stdout: "declare -x e=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_allexport_inherited_by_subshell
+  description: "C028: set -a is inherited by a subshell, whose declare exports too"
+  command: 'set -a; ( declare z=1; printenv z; declare -p z )'
+  stdout: "1\ndeclare -x z=\"1\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c028_dynamic_special_not_exported
+  description: "C028: set -a; RANDOM=5 seeds RANDOM but never exports it"
+  command: 'set -a; RANDOM=5; printenv RANDOM; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+# --- W1-N18: a local tombstone keeps its attributes across a redeclare -------
+
+- name: w1n18_local_tombstone_valueless_redeclare_merges
+  description: "W1-N18: local -u x; local -x x keeps -u on the declared-unset local"
+  command: 'f(){ local -u x; local -x x; declare -p x; }; f'
+  stdout: "declare -xu x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w1n18_local_tombstone_keeps_readonly
+  description: "W1-N18: local -r x; local -x x keeps READONLY"
+  command: 'f(){ local -r x; local -x x; declare -p x; }; f'
+  stdout: "declare -rx x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w1n18_local_tombstone_case_applies_to_value
+  description: "W1-N18: local -u x; local x=hi applies the tombstone's -u to the value"
+  command: 'f(){ local -u x; local x=hi; declare -p x; }; f'
+  stdout: "declare -u x=\"HI\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w1n18_local_tombstone_integer_applies_to_value
+  description: "W1-N18: local -i x; local x=2+3 evaluates through the tombstone's -i"
+  command: 'f(){ local -i x; local x=2+3; declare -p x; }; f'
+  stdout: "declare -i x=\"5\"\n"
+  stderr: ""
+  exit_code: 0
+
+# --- W1-N26: declared divergence, documented as unsupported (slot 1.16) -------
+
+- name: w1n26_export_f_not_serialised_to_child_env
+  description: "W1-N26 (declared): export -f marks the function but psh never serialises a BASH_FUNC_name%% env entry; bash prints 1"
+  command: 'f(){ :; }; export -f f; env | grep -c ^BASH_FUNC_f'
+  stdout: "0\n"
+  stderr: ""
+  exit_code: 1
+  psh_only: true
