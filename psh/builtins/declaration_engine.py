@@ -38,7 +38,7 @@ its delegation to ``declare -r``. ``local`` commits through the SAME write door
 (``store.assign(..., target=TargetScope.LOCAL)``), which routes to the
 ``local``-specific primitive (redeclare-merge, exported-shadow inheritance,
 tombstone semantics) — so ``set -a`` is decided once at the door for all five
-spellings (slot 1.16 / C028), and no builtin re-implements it.
+spellings, and no builtin re-implements it.
 """
 from __future__ import annotations
 

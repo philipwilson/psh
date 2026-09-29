@@ -99,7 +99,7 @@ class VariableStore:
                target: TargetScope = TargetScope.DYNAMIC,
                skip_temp_env: bool = False) -> None:
         """Write ``value`` to ``name`` — THE door every whole-variable write
-        crosses (slot 1.16 / C028).
+        crosses.
 
         ``target`` selects the scope rule (see :class:`TargetScope`);
         ``skip_temp_env`` (``export`` / ``cd``) steps past a command's temp-env

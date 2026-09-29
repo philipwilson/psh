@@ -141,9 +141,9 @@ store.remove_attributes(name, attrs, global_scope=...)
 store.unset(name)
 ```
 
-- **One write door (slot 1.16 / C028).** `VariableStore.assign` is the only
+- **One write door (C028).** `VariableStore.assign` is the only
   caller of the two write primitives, `ScopeManager._set_variable` and
-  `ScopeManager._create_local` (private since slot 1.16); the primitives hold
+  `ScopeManager._create_local` (private); the primitives hold
   the `.value`/`.attributes` writes, the door holds the policy. A
   `TargetScope` (`DYNAMIC` plain assignment, `DEFAULT` declaration default,
   `LOCAL` the `local` builtin, `GLOBAL` `declare -g`) replaces the old
@@ -156,7 +156,7 @@ store.unset(name)
   `readonly` — inherits it, so no builtin may read the `allexport` option
   (`tests/unit/tooling/test_allexport_owner_ratchet_1_16.py`). Repro:
   `set -a; f(){ local L=1; printenv L; }; f` prints `1` (bash 5.3.15); before
-  slot 1.16 the child received nothing (C028). The manager receives the
+  the door existed the child received nothing (C028). The manager receives the
   `ShellOptions` table at construction (and through `clone(options=...)`), so
   the door reads it without a back-reference to the shell.
 - A READONLY variable refuses any attribute change that would alter what a

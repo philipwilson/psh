@@ -156,7 +156,7 @@ class ShellState:
 
         # Centralized shell options dictionary — built BEFORE the scope manager,
         # which holds a reference to it so the variable write door can decide
-        # ``set -a`` without a back-reference to the shell (slot 1.16).
+        # ``set -a`` without a back-reference to the shell.
         # Shell options live in a registry-backed, dict-compatible container
         # (psh/core/option_registry.py is the single source of truth for every
         # option's default, short flag, $- letter, and category). Only the

@@ -658,7 +658,7 @@ class ScopeManager:
                       local: bool = False, global_scope: bool = False,
                       skip_temp_env: bool = False):
         """Write primitive behind the door — called ONLY by
-        :meth:`VariableStore.assign` (slot 1.16). Every other caller goes
+        :meth:`VariableStore.assign`. Every other caller goes
         through ``scope_manager.store.assign(...)``, which decides ``set -a``
         and maps a :class:`TargetScope` onto the flags below.
 
@@ -874,13 +874,12 @@ class ScopeManager:
     def _create_local(self, name: str, value: Optional[Any] = None,
                       attributes: VarAttributes = VarAttributes.NONE):
         """``local`` write primitive behind the door — called ONLY by
-        :meth:`VariableStore.assign` with ``TargetScope.LOCAL`` (slot 1.16).
+        :meth:`VariableStore.assign` with ``TargetScope.LOCAL``.
 
         ``value=None`` plants a declared-but-unset local (a tombstone that keeps
         its attributes); a value-less redeclare over such a tombstone MERGES the
         new attributes into it in place (bash: ``local -u x; local -x x`` shows
-        ``declare -xu x``; ``local -r x; local -x x`` keeps readonly — ledger
-        W1-N18).
+        ``declare -xu x``; ``local -r x; local -x x`` keeps readonly).
         """
         if not self.is_in_function():
             raise RuntimeError("local: can only be used in a function")
@@ -922,7 +921,7 @@ class ScopeManager:
         existing_local = self.current_scope.variables.get(name)
         redeclare = existing_local is not None and not existing_local.is_unset
         # A declared-but-unset local (``local -u x``) being redeclared: its
-        # attributes MERGE with the new ones (W1-N18) — with a value the cell is
+        # attributes MERGE with the new ones — with a value the cell is
         # replaced below but keeps ``-u`` (bash ``local -u x; local x=hi`` ->
         # ``declare -u x="HI"``); without one the tombstone stays and merges in
         # place (``local -u x; local -x x`` -> ``declare -xu x``).
