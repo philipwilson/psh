@@ -480,7 +480,11 @@ value-less declaration is exported only when it creates a new global (`declare
 y` at top level yes, `local y` and an in-function `declare y` no); arrays,
 dynamic specials such as `RANDOM`, and attribute-only changes to an existing
 variable never are. `export -n NAME=v` ends unexported and `declare +x NAME=v`
-ends exported, matching bash's ordering.
+/ `local +x NAME=v` end exported, matching bash's ordering (the flag is removed,
+then the assignment re-exports), while a value-less `declare +x NAME` is never
+exported. One bash quirk is matched too: a write through a nameref to an array
+*element* under `set -a` marks the array itself exported (`declare -ax`), where a
+direct `a[1]=v` does not.
 
 Two deliberate differences remain:
 

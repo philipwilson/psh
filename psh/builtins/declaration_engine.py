@@ -83,7 +83,8 @@ def attributes_from_options(options: dict) -> VarAttributes:
 
     ``-l`` and ``-u`` are mutually exclusive; when BOTH appear in one
     declaration bash applies NEITHER (``declare -ul y; y=HeLLo`` leaves $y
-    unfolded and records neither case attribute).
+    unfolded and records neither case attribute). A flag that also appears
+    as ``+flag`` is dropped: the removal wins (``declare -x +x v`` → ``--``).
     """
     attributes = VarAttributes.NONE
     for key, attr in ATTRIBUTE_FLAGS.items():
@@ -91,6 +92,12 @@ def attributes_from_options(options: dict) -> VarAttributes:
             attributes |= attr
     if _case_cancels(options):
         attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
+    # A flag given BOTH ways in one declaration (``declare -x +x v``,
+    # ``declare +i -i n=2+3``) is REMOVED, whatever the order: bash applies the
+    # ``+`` set after the ``-`` set, so the result is ``declare -- v`` and the
+    # value is stored literally (``2+3``). Under ``set -a`` a VALUED write is
+    # still exported by the write door afterwards, as in bash.
+    attributes &= ~removed_attributes_from_options(options)
     return attributes
 
 

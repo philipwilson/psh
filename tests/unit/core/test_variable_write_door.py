@@ -286,3 +286,99 @@ def test_child_clone_reads_the_child_option_table(sh):
     assert not (child.scope_manager.get_variable_object('d').attributes & A.EXPORT)
     # and the parent's table is untouched
     assert sh.state.options.get('allexport') is True
+
+
+# ---------------------------------------------------------------------------
+# remove_attributes: an explicit +x against allexport (verifier r1, b1/b3).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("target", [TargetScope.DEFAULT, TargetScope.GLOBAL, TargetScope.DYNAMIC],
+                         ids=["default", "global", "dynamic"])
+def test_valueless_plus_x_suppresses_allexport(sh, target):
+    _allexport(sh)
+    _store(sh).assign('v', '', attributes=A.UNSET, remove_attributes=A.EXPORT, target=target)
+    assert not _exported(sh, 'v')
+
+
+def test_valueless_plus_x_with_integer_keeps_integer_only(sh):
+    _allexport(sh)
+    _store(sh).assign('n', '', attributes=A.INTEGER | A.UNSET, remove_attributes=A.EXPORT,
+                      target=TargetScope.DEFAULT)
+    assert _attrs(sh, 'n') & (A.INTEGER | A.EXPORT) == A.INTEGER
+
+
+def test_valued_plus_x_is_still_exported(sh):
+    _allexport(sh)
+    _store(sh).assign('v', '1', remove_attributes=A.EXPORT, target=TargetScope.DEFAULT)
+    assert _exported(sh, 'v')
+
+
+def test_fresh_local_plus_x_drops_inherited_export_only(sh):
+    _store(sh).assign('G', 'g', attributes=A.EXPORT)
+    sh.state.scope_manager.push_scope('f')
+    _store(sh).assign('G', 'z', remove_attributes=A.EXPORT, target=TargetScope.LOCAL)
+    assert not _exported(sh, 'G')
+
+
+def test_fresh_local_plus_x_under_allexport_exports(sh):
+    _store(sh).assign('G', 'g', attributes=A.EXPORT)
+    _allexport(sh)
+    sh.state.scope_manager.push_scope('f')
+    _store(sh).assign('G', 'z', remove_attributes=A.EXPORT, target=TargetScope.LOCAL)
+    assert _exported(sh, 'G')
+
+
+def test_fresh_valueless_local_plus_x_is_not_exported(sh):
+    _store(sh).assign('G', 'g', attributes=A.EXPORT)
+    _allexport(sh)
+    sh.state.scope_manager.push_scope('f')
+    _store(sh).assign('G', None, remove_attributes=A.EXPORT, target=TargetScope.LOCAL)
+    assert not _exported(sh, 'G') and _attrs(sh, 'G') & A.UNSET
+
+
+def test_local_redeclare_plus_attribute_strips_it_before_merge(sh):
+    sh.state.scope_manager.push_scope('f')
+    _store(sh).assign('x', '1', attributes=A.UPPERCASE | A.EXPORT, target=TargetScope.LOCAL)
+    _store(sh).assign('x', 'hi', remove_attributes=A.UPPERCASE, target=TargetScope.LOCAL)
+    assert sh.state.get_variable('x') == 'hi' and _exported(sh, 'x')
+
+
+# ---------------------------------------------------------------------------
+# unset of a declared-unset local strips its attributes (verifier r1, b2).
+# ---------------------------------------------------------------------------
+
+def test_unset_of_declared_tombstone_strips_attributes(sh):
+    sm = sh.state.scope_manager
+    sm.push_scope('f')
+    _store(sh).assign('x', None, attributes=A.UPPERCASE, target=TargetScope.LOCAL)
+    sm.unset_variable('x')
+    assert _attrs(sh, 'x') == A.UNSET
+    _store(sh).assign('x', 'v', target=TargetScope.LOCAL)
+    assert sh.state.get_variable('x') == 'v' and not (_attrs(sh, 'x') & A.UPPERCASE)
+
+
+def test_unset_of_readonly_tombstone_is_refused(sh):
+    from psh.core import ReadonlyVariableError
+    sm = sh.state.scope_manager
+    sm.push_scope('f')
+    _store(sh).assign('x', None, attributes=A.READONLY, target=TargetScope.LOCAL)
+    with pytest.raises(ReadonlyVariableError):
+        sm.unset_variable('x')
+    assert _attrs(sh, 'x') & A.READONLY
+
+
+# ---------------------------------------------------------------------------
+# nameref to an array element: the door's EXPORT lands on the array (b4).
+# ---------------------------------------------------------------------------
+
+def test_nameref_element_write_marks_the_array_exported_under_allexport(sh):
+    sh.run_command("a=(0 1); declare -n r='a[1]'")
+    _allexport(sh)
+    _store(sh).assign('r', '5')
+    assert _exported(sh, 'a') and sh.state.scope_manager.get_variable_object('a').value.get(1) == '5'
+
+
+def test_nameref_element_write_without_allexport_leaves_array_unexported(sh):
+    sh.run_command("a=(0 1); declare -n r='a[1]'")
+    _store(sh).assign('r', '5')
+    assert not _exported(sh, 'a')

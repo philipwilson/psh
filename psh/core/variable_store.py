@@ -96,6 +96,7 @@ class VariableStore:
 
     def assign(self, name: str, value: object, *,
                attributes: VarAttributes = VarAttributes.NONE,
+               remove_attributes: VarAttributes = VarAttributes.NONE,
                target: TargetScope = TargetScope.DYNAMIC,
                skip_temp_env: bool = False) -> None:
         """Write ``value`` to ``name`` — THE door every whole-variable write
@@ -109,14 +110,23 @@ class VariableStore:
         declaration builtins express the same thing as ``""`` plus
         ``VarAttributes.UNSET``).
 
+        ``remove_attributes`` are the attributes a declaration explicitly
+        REMOVES (``declare +x``, ``local +x``): the primitives strip them from
+        the attributes the write would otherwise inherit (a redeclared cell, an
+        exported variable a fresh ``local`` shadows), and an explicit ``+x`` on
+        a value-less declaration suppresses allexport (bash: ``set -a; declare
+        +x v`` stays unexported while ``declare +x v=1`` is exported).
+
         The ``set -a`` decision is made HERE, once, by
         :meth:`_allexport_attributes`, so every spelling inherits it. Raises
         :class:`ReadonlyVariableError` (state unchanged) for a readonly target
         and :class:`NamerefCycleError` for a cyclic nameref.
         """
-        attributes |= self._allexport_attributes(name, value, attributes, target)
+        attributes |= self._allexport_attributes(name, value, attributes, target,
+                                                 remove_attributes)
         if target is TargetScope.LOCAL:
-            self._sm._create_local(name, value, attributes)
+            self._sm._create_local(name, value, attributes,
+                                   remove_attributes=remove_attributes)
             return
         self._sm._set_variable(
             name, value, attributes=attributes,
@@ -126,7 +136,9 @@ class VariableStore:
 
     def _allexport_attributes(self, name: str, value: object,
                               attributes: VarAttributes,
-                              target: TargetScope) -> VarAttributes:
+                              target: TargetScope,
+                              remove_attributes: VarAttributes = VarAttributes.NONE
+                              ) -> VarAttributes:
         """The EXPORT bit ``set -a`` adds to this write, or NONE.
 
         bash 5.3.15's rule, probed across every spelling (the pins live in
@@ -141,7 +153,13 @@ class VariableStore:
         - a value-less declaration (``declare NAME``, ``readonly NAME``,
           ``declare -g NAME`` — expressed as ``""`` + UNSET) is exported only
           when it lands in the GLOBAL scope: a value-less ``local NAME`` or an
-          in-function ``declare NAME`` is not;
+          in-function ``declare NAME`` is not — and an explicit ``+x`` on a
+          value-less declaration (``declare +x v``, ``declare +x -i n``) is
+          never exported, while ``declare +x v=1`` / ``local +x v=1`` ARE
+          (bash removes the flag, then the assignment re-exports);
+        - a write through a nameref to an array ELEMENT marks the ARRAY
+          exported (``declare -n r='a[1]'; r=5`` → ``declare -ax a``), where a
+          direct ``a[1]=5`` does not — bash's nameref path rebinds the array;
         - a whole-array write never is (bash does not export arrays), nor is a
           dynamic special (``set -a; RANDOM=5`` seeds RANDOM unexported);
         - an attribute-only change to an EXISTING variable never reaches this
@@ -163,6 +181,8 @@ class VariableStore:
             return VarAttributes.NONE
         valueless = value is None or bool(attributes & VarAttributes.UNSET)
         if valueless:
+            if remove_attributes & VarAttributes.EXPORT:
+                return VarAttributes.NONE
             lands_global = (target is TargetScope.GLOBAL
                             or (target is TargetScope.DYNAMIC
                                 and not self._sm.has_function_scope())

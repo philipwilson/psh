@@ -694,6 +694,11 @@ class ScopeManager:
             if ('[' in name and name.endswith(']') and self._shell is not None
                     and not isinstance(value, (IndexedArray, AssociativeArray))):
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
+                # bash's nameref path rebinds the ARRAY, so an EXPORT the door
+                # attached (``set -a; declare -n r='a[1]'; r=5``) lands on the
+                # array (``declare -ax a``) — a direct ``a[1]=5`` never does.
+                if attributes & VarAttributes.EXPORT:
+                    self.apply_attribute(name[:name.index('[')], VarAttributes.EXPORT)
                 return
 
         # Write-through to a command temp-env binding: a PLAIN assignment while a
@@ -872,9 +877,17 @@ class ScopeManager:
         return None
 
     def _create_local(self, name: str, value: Optional[Any] = None,
-                      attributes: VarAttributes = VarAttributes.NONE):
+                      attributes: VarAttributes = VarAttributes.NONE, *,
+                      remove_attributes: VarAttributes = VarAttributes.NONE):
         """``local`` write primitive behind the door — called ONLY by
         :meth:`VariableStore.assign` with ``TargetScope.LOCAL``.
+
+        ``remove_attributes`` (``local +x``) are stripped from what the new
+        local would INHERIT — a redeclared cell's attributes, or the EXPORT of
+        the variable a fresh local shadows — before ``attributes`` (which may
+        carry the door's allexport EXPORT) are merged: ``export G=g; f(){ local
+        +x G=z; }`` gives an unexported shadow, while under ``set -a`` the same
+        line is exported (bash).
 
         ``value=None`` plants a declared-but-unset local (a tombstone that keeps
         its attributes); a value-less redeclare over such a tombstone MERGES the
@@ -954,17 +967,19 @@ class ScopeManager:
             # like any prefix assignment.
             if value is not None and existing_local.is_readonly:
                 raise ReadonlyVariableError(name)
-            attributes = existing_local.attributes | attributes
+            attributes = (existing_local.attributes & ~remove_attributes) | attributes
         elif tombstone_redeclare:
             assert existing_local is not None  # narrow for type-checker
-            attributes |= existing_local.attributes & ~VarAttributes.UNSET
+            attributes |= (existing_local.attributes & ~VarAttributes.UNSET
+                           & ~remove_attributes)
         else:
             # New local: inherit ONLY the EXPORT attribute of the variable it
             # shadows — probe: ``declare -xi N=5; f() { local N; declare -p N;
             # }; f`` prints ``declare -x N`` (no -i). The exported local is
             # what children see while the function runs.
             shadowed = self.get_variable_object(name)
-            if shadowed is not None and shadowed.is_exported:
+            if (shadowed is not None and shadowed.is_exported
+                    and not (remove_attributes & VarAttributes.EXPORT)):
                 attributes |= VarAttributes.EXPORT
 
         if value is not None:
@@ -1076,8 +1091,11 @@ class ScopeManager:
             if var.is_readonly:
                 raise ReadonlyVariableError(name)
             if scope is self.current_scope and scope is not self.global_scope:
-                if var.is_unset:
+                if var.is_unset and var.attributes == VarAttributes.UNSET:
                     return  # already local-and-unset: idempotent
+                # A DECLARED-but-unset local (``local -u x``) loses its
+                # attributes here too: bash ``local -u x; unset x; local x=v``
+                # shows ``declare -- x="v"``.
                 scope.variables[name] = Variable(
                     name=name, value="", attributes=VarAttributes.UNSET)
                 self._debug_print(

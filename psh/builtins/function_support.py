@@ -642,7 +642,8 @@ class DeclareBuiltin(Builtin):
                 else:
                     self._set_variable_with_attributes(
                         shell, target, "",
-                        attributes | VarAttributes.UNSET, options['global'])
+                        attributes | VarAttributes.UNSET, options['global'],
+                        remove_attrs=remove_attrs)
                 return 0
             existing = self._declared_in_target_scope(shell, arg, options['global'])
             if existing:
@@ -660,7 +661,8 @@ class DeclareBuiltin(Builtin):
                 # fails; assignment makes both appear).
                 self._set_variable_with_attributes(
                     shell, arg, "",
-                    attributes | VarAttributes.UNSET, options['global'])
+                    attributes | VarAttributes.UNSET, options['global'],
+                    remove_attrs=remove_attrs)
         return 0
     def _print_variables(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Print variables with attributes using declare -p format."""
@@ -774,7 +776,8 @@ class DeclareBuiltin(Builtin):
         return shell.state.scope_manager.all_variables_with_attributes()
 
     def _set_variable_with_attributes(self, shell: 'Shell', name: str,
-                                     value: Any, attributes: VarAttributes, global_flag: bool = False):
+                                     value: Any, attributes: VarAttributes, global_flag: bool = False,
+                                     remove_attrs: VarAttributes = VarAttributes.NONE):
         """Set variable with attributes.
 
         With -g the write is forced to the global scope (past any local of
@@ -789,7 +792,7 @@ class DeclareBuiltin(Builtin):
         # The write door decides ``set -a`` and fires the scope manager's
         # observer (which keeps state.env in sync for exported variables).
         shell.state.scope_manager.store.assign(
-            name, value, attributes=attributes,
+            name, value, attributes=attributes, remove_attributes=remove_attrs,
             target=(TargetScope.GLOBAL if global_flag else TargetScope.DEFAULT))
 
     def _print_function_definition(self, name, func, shell: 'Shell'):

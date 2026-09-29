@@ -705,7 +705,7 @@ Exported variables reach `state.env` through an OBSERVER, never a direct
 write (this is the invariant the Environment Policy section declares).
 `ShellState.export_variable` (`state.py#ShellState.export_variable`) only
 sets the EXPORT attribute — `scope_manager.store.assign(..., attributes=
-VarAttributes.EXPORT, local=False, skip_temp_env=True)`. The scope manager
+VarAttributes.EXPORT, skip_temp_env=True)`. The scope manager
 then fires `variable_changed` → `_sync_exported_variable` →
 `_materialize_env_name`, the ONE place `state.env[name]` is written. No
 production code pokes `state.env[...]` directly.

@@ -659,10 +659,11 @@ class LocalBuiltin(Builtin):
         ``redeclare``) would REPLACE the cell and drop its remaining attributes
         (``local -rx e; local +x e`` must keep readonly — bash ``declare -r e``).
 
-        A FRESH name is established first (inheriting only EXPORT from the
-        variable it shadows), then the inherited attribute is stripped
-        (``export G=g; f(){ local +x G=z; }`` gives a non-exported local
-        shadow).
+        A FRESH name goes through the door with the removal attached, so the
+        inherited EXPORT of a shadowed variable is stripped while a VALUED
+        write under ``set -a`` still exports (``export G=g; f(){ local +x
+        G=z; }`` gives a non-exported local shadow; ``set -a; f(){ local +x
+        l=1; }`` an exported one).
         """
         sm = shell.state.scope_manager
         if not remove_attrs:
@@ -680,9 +681,12 @@ class LocalBuiltin(Builtin):
             sm.store.assign(name, value, attributes=add_attrs,
                             target=TargetScope.LOCAL)
             return
+        # A FRESH name: the door strips ``+attrs`` from what the local would
+        # inherit (the shadowed variable's EXPORT) while keeping the EXPORT
+        # allexport adds for a VALUED write — bash: ``export G=g; f(){ local
+        # +x G=z; }`` is unexported, ``set -a; f(){ local +x l=1; }`` exported.
         sm.store.assign(name, value, attributes=add_attrs,
-                        target=TargetScope.LOCAL)
-        sm.remove_attribute(name, remove_attrs)
+                        remove_attributes=remove_attrs, target=TargetScope.LOCAL)
 
     def _save_dash_options(self, shell: 'Shell') -> None:
         """Record the current `set` options for `local -` restore-on-return.

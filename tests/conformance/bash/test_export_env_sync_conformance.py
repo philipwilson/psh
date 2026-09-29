@@ -794,11 +794,217 @@ class TestLocalTombstoneAttributeMerge:
             'f(){ local -x x; local x=v; declare -p x; printenv x; }; f',
             tmp_path=tmp_path)
 
-    def test_unset_created_tombstone_starts_fresh(self, tmp_path):
-        """``local x; unset x`` strips the attributes, so a later ``local x=v``
-        starts fresh — the pre-existing semantics, pinned as the boundary."""
+    def test_unset_of_a_valued_local_strips_attributes(self, tmp_path):
+        """``local -u x=a; unset x`` strips the attributes, so a later
+        ``local x=hi`` starts fresh."""
         _parity_in_modes(
             'f(){ local -u x=a; unset x; local x=hi; declare -p x; }; f',
+            tmp_path=tmp_path)
+
+    # -- the boundary the merge must NOT cross: an unset-CREATED tombstone -----
+    # (verifier round 1, blocker 2): ``unset`` of a DECLARED-but-unset local
+    # strips its attributes like any other unset, so the later redeclare
+    # inherits nothing.
+
+    def test_unset_of_a_declared_unset_local_strips_attributes(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -u x; unset x; declare -p x; local x=v; declare -p x; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_declared_tombstone_then_valued_local_under_allexport(self, tmp_path):
+        """The child must receive ``v``, not an uppercased ``V``."""
+        _parity_in_modes(
+            'set -a; f(){ local -u x; unset x; local x=v; declare -p x; printenv x; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_declared_tombstone_then_valueless_redeclare(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -u x; unset x; local x; declare -p x; local -i x; declare -p x; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_declared_integer_tombstone_then_valued_local(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local -i lx; unset lx; local lx=1+1; declare -p lx; printenv lx; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_declared_tombstone_then_plain_assignment(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -x x; unset x; x=hi; declare -p x; printenv x; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_unset_of_readonly_tombstone_refused(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -r x; unset x; echo "rc=$?"; declare -p x; }; f',
+            tmp_path=tmp_path, stderr_has="unset: x: cannot unset: readonly variable")
+
+
+class TestAllexportExplicitUnexport:
+    """``+x`` against ``set -a`` (verifier round 1, blockers 1 and 3).
+
+    bash removes the flag FIRST and the assignment then re-exports: a VALUED
+    ``declare +x v=1`` / ``local +x l=1`` ends exported, a value-less
+    ``declare +x v`` / ``declare +x -i n`` / ``declare -g +x v`` never is (the
+    door's value-less-new-global rule carves out an explicit ``+x``), and a
+    fresh ``local +x G`` drops only the EXPORT it would have inherited from the
+    variable it shadows. Owner: ``VariableStore.assign(remove_attributes=...)``.
+    Parity in three modes against bash 5.3.15.
+    """
+
+    def test_valueless_declare_plus_x_not_exported_and_stays_so(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare +x v; declare -p v; set +a; v=5; declare -p v; printenv v; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_valueless_typeset_plus_x_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; typeset +x t; typeset -p t; set +a; t=3; printenv t; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_valueless_declare_plus_x_with_integer_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare +x -i n; declare -p n; typeset +x -i m; declare -p m',
+            tmp_path=tmp_path)
+
+    def test_valueless_declare_plus_x_with_readonly_not_exported(self, tmp_path):
+        _parity_in_modes('set -a; declare +x -r s; declare -p s', tmp_path=tmp_path)
+
+    def test_valueless_declare_g_plus_x_in_function_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ declare -gx gx; declare -g +x gnx; }; f; declare -p gx gnx; set +a; gnx=5; printenv gnx; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_conflicting_x_and_plus_x_valueless_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -x +x v; declare +x -x w; declare +x +r u; declare -p v w u',
+            tmp_path=tmp_path)
+
+    # -- a flag given both ways: the removal wins, whatever the order ----------
+    # (pre-existing, found by the verifier's D06 row; one home:
+    # ``declaration_engine.attributes_from_options``).
+
+    def test_conflicting_flags_valued_without_allexport(self, tmp_path):
+        _parity_in_modes(
+            'declare -x +x v=1; declare +x -x w=2; declare -p v w; printenv v; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_conflicting_flags_valued_under_allexport_exports(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -x +x v=1; f(){ local -x +x l=1; declare -p l; }; f; declare -p v; printenv v',
+            tmp_path=tmp_path)
+
+    def test_conflicting_integer_flags_store_literally(self, tmp_path):
+        _parity_in_modes(
+            'declare -i +i n=2+3; declare -p n; f(){ local +i -i m=2+3; declare -p m; }; f',
+            tmp_path=tmp_path)
+
+    def test_conflicting_flags_on_existing_exported_variable_unexport(self, tmp_path):
+        _parity_in_modes(
+            'export x=1; declare -x +x x; declare -p x; printenv x; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_conflicting_local_flags_valued(self, tmp_path):
+        _parity_in_modes(
+            'f(){ local -x +x v=1; declare -p v; printenv v; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_mixed_valued_and_valueless_plus_x_operands(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare +x a1=1 a2; declare -p a1 a2; printenv a1; printenv a2; echo "rc=$?"',
+            tmp_path=tmp_path)
+
+    def test_valueless_plus_x_on_missing_nameref_target_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare -n r=missing; declare +x r; declare -p missing',
+            tmp_path=tmp_path)
+
+    def test_valued_declare_plus_x_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; declare +x v=1; declare -p v; printenv v', tmp_path=tmp_path)
+
+    def test_valued_local_plus_x_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local +x lx=1; declare -p lx; printenv lx; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_valued_local_plus_x_with_integer_and_case(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local +x -i lx=1+1; local +x -u ly=hi; declare -p lx ly; printenv lx; printenv ly; }; f',
+            tmp_path=tmp_path)
+
+    def test_valueless_local_plus_x_not_exported(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local +x lx=1; local +x ly; declare -p lx ly; printenv ly; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_fresh_local_plus_x_drops_inherited_export(self, tmp_path):
+        _parity_in_modes(
+            'export G=g; f(){ local +x G=z; declare -p G; printenv G; }; f; printenv G',
+            tmp_path=tmp_path)
+
+    def test_fresh_local_plus_x_under_allexport_still_exports(self, tmp_path):
+        _parity_in_modes(
+            'export G=g; set -a; f(){ local +x G=z; declare -p G; printenv G; }; f',
+            tmp_path=tmp_path)
+
+    def test_fresh_valueless_local_plus_x_drops_inherited_export(self, tmp_path):
+        _parity_in_modes(
+            'export G=g; f(){ local +x G; declare -p G; printenv G; echo "rc=$?"; }; f',
+            tmp_path=tmp_path)
+
+    def test_local_redeclare_plus_x_with_value_under_allexport(self, tmp_path):
+        _parity_in_modes(
+            'set -a; f(){ local -x x; local +x x=2; local y=1; local +x y=2; declare -p x y; }; f',
+            tmp_path=tmp_path)
+
+
+class TestAllexportNamerefElementWrite:
+    """A write through a nameref to an array ELEMENT under ``set -a`` marks the
+    ARRAY exported in bash (its nameref path rebinds the array); a direct
+    element write never does (verifier round 1, blocker 4). ``declare -p``
+    only — arrays never reach a child's environment.
+    """
+
+    def test_nameref_element_write_marks_indexed_array_exported(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(0 1); declare -n r='a[1]'; r=5; declare -p a r",
+            tmp_path=tmp_path)
+
+    def test_nameref_element_write_creates_exported_array(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -n r='a[0]'; r=5; declare -p a", tmp_path=tmp_path)
+
+    def test_nameref_element_write_marks_assoc_array_exported(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -A m; declare -n r='m[k]'; r=v; declare -p m",
+            tmp_path=tmp_path)
+
+    def test_direct_element_writes_never_export(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a[1]=5; b=(1); b[0]=2; declare -A m; m[k]=v; ((c[2]=7)); declare -p a b m c",
+            tmp_path=tmp_path)
+
+    def test_nameref_element_export_persists_after_set_plus_a(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(0 1); declare -n r='a[1]'; r=5; set +a; a[0]=1; declare -p a",
+            tmp_path=tmp_path)
+
+
+class TestAllexportDeclarationDefaultUnderPrefix:
+    """A top-level command-prefix scope is NOT a function scope: ``declare``'s
+    default target stays the global (verifier round 1 suggested rows for the
+    ``has_function_scope`` boundary)."""
+
+    def test_prefix_then_declare_at_top_level(self, tmp_path):
+        _parity_in_modes(
+            'set -a; X=1 declare y=2; declare -p y; printenv y', tmp_path=tmp_path)
+
+    def test_prefix_then_eval_declare_at_top_level(self, tmp_path):
+        _parity_in_modes(
+            "set -a; X=1 eval 'declare y=2'; declare -p y; printenv y", tmp_path=tmp_path)
+
+    def test_two_prefixes_then_valueless_declare(self, tmp_path):
+        _parity_in_modes(
+            'set -a; A=1 B=2 declare C; declare -p C; A=1 declare D=3; printenv D',
             tmp_path=tmp_path)
 
 
