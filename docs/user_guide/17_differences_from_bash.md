@@ -470,6 +470,29 @@ VAR= value        # Sets VAR to empty, then runs "value" as command
 VAR =value        # Tries to run "VAR" as command with arg "=value"
 ```
 
+### `set -a` (allexport) and the Declaration Builtins
+
+`set -a` is decided once, at the variable write, so every spelling behaves as
+in bash 5.3: a scalar given a value is exported whether it arrives by plain
+assignment, `read`, `for`, arithmetic, or `declare`/`typeset`/`local`/`readonly`
+(including `-i`, `-g`, a nameref definition, and inside a function); a
+value-less declaration is exported only when it creates a new global (`declare
+y` at top level yes, `local y` and an in-function `declare y` no); arrays,
+dynamic specials such as `RANDOM`, and attribute-only changes to an existing
+variable never are. `export -n NAME=v` ends unexported and `declare +x NAME=v`
+ends exported, matching bash's ordering.
+
+Two deliberate differences remain:
+
+- **`psh -a` (the invocation flag) does not export the shell's own startup
+  seeds.** `bash -a -c 'declare -p PS4'` prints `declare -x PS4="+ "`; psh
+  prints `declare -- PS4="+ "` because it seeds those variables before the
+  invocation flags are applied. Anything *you* assign under `-a` is exported on
+  both sides.
+- **`export -f` does not serialise the function into the child's
+  environment.** The function is marked exported (`declare -fx` lists it), but
+  no `BASH_FUNC_name%%` entry reaches a child, so a child bash cannot call it.
+
 ### Temporary-Environment Prefix Assignments (`VAR=x cmd`)
 
 A `VAR=x cmd` prefix over a builtin or external command places `VAR` in a

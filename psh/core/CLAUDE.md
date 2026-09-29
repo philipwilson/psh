@@ -51,15 +51,16 @@ All shell state goes through `ShellState`:
 ```python
 class ShellState:
     def __init__(self):
-        # Scope manager for variables
-        self.scope_manager = ScopeManager()
-
         # Shell options: a registry-backed ShellOptions mapping (NOT a plain
         # dict). Defaults come from option_registry.py; CLI/debug flags are
         # passed as `overrides`. Reads/writes use the ['key']/.get() API but
         # an unregistered name or wrong value_type raises. See "Adding a New
-        # Shell Option" below.
+        # Shell Option" below. Built FIRST: the scope manager holds it so the
+        # variable write door can read `allexport`.
         self.options = ShellOptions(overrides={...})
+
+        # Scope manager for variables (its `store.assign` is the write door)
+        self.scope_manager = ScopeManager(options=self.options)
 
         # Execution state — one cohesive delegate object; ShellState
         # exposes last_exit_code / last_bg_pid / pipestatus /
@@ -131,8 +132,8 @@ caller that forgets a guard (core-state appraisal C2 / Phase 2).
 
 ```python
 store = shell.state.scope_manager.store
-store.assign(name, value, attributes=..., local=..., global_scope=...)
-store.append(name, value, global_scope=...)   # target-scope-aware append base
+store.assign(name, value, attributes=..., target=TargetScope.<...>)  # THE write door
+store.append(name, value, target=...)         # target-scope-aware append base
 store.set_element(name, key, value)           # guarded array-element write
 store.unset_element(name, key)                # guarded array-element unset
 store.add_attributes(name, attrs, global_scope=...)
@@ -140,16 +141,31 @@ store.remove_attributes(name, attrs, global_scope=...)
 store.unset(name)
 ```
 
-- Whole-variable ops are a typed facade over the `ScopeManager` authority
-  (`set_variable`/`create_local`/`apply_attribute`/`remove_attribute`) — that is
-  where the actual `.value`/`.attributes` writes live.
+- **One write door (slot 1.16 / C028).** `VariableStore.assign` is the only
+  caller of the two write primitives, `ScopeManager._set_variable` and
+  `ScopeManager._create_local` (private since slot 1.16); the primitives hold
+  the `.value`/`.attributes` writes, the door holds the policy. A
+  `TargetScope` (`DYNAMIC` plain assignment, `DEFAULT` declaration default,
+  `LOCAL` the `local` builtin, `GLOBAL` `declare -g`) replaces the old
+  `local`/`global_scope` flag pair, and the door resolves "inside a function"
+  itself (`ScopeManager.has_function_scope`). `ShellState.set_variable` /
+  `export_variable` are one-line forwards into it.
+- **`set -a` is decided at the write door, once**
+  (`variable_store.py#VariableStore._allexport_attributes`): every spelling —
+  plain assignment, `read`, `for`, arithmetic, `declare`/`typeset`/`local`/
+  `readonly` — inherits it, so no builtin may read the `allexport` option
+  (`tests/unit/tooling/test_allexport_owner_ratchet_1_16.py`). Repro:
+  `set -a; f(){ local L=1; printenv L; }; f` prints `1` (bash 5.3.15); before
+  slot 1.16 the child received nothing (C028). The manager receives the
+  `ShellOptions` table at construction (and through `clone(options=...)`), so
+  the door reads it without a back-reference to the shell.
 - A READONLY variable refuses any attribute change that would alter what a
   later assignment DOES (`-i`, `-l`, `-u`, `-a`, `-A`, `-n` and their `+`
   forms); `-x`, `-t`, `-r` and `-g` still apply. The rule lives once, in
   `scope.py#ScopeManager.check_readonly_attribute_change`, keyed on the
   REQUESTED attribute rather than a computed delta — the single carve-out is a
   `+n` with no nameref to remove. `apply_attribute`, `remove_attribute`,
-  `create_local` and declare's bare-name `-a`/`-A` branch all route through it.
+  `_create_local` and declare's bare-name `-a`/`-A` branch all route through it.
 - `append` reads the append base from the scope the write TARGETS (so
   `declare -g x+=A` reads the global base, not a local shadow) and honors the
   target's integer attribute (`export n+=3` on `-i n` appends arithmetically).
@@ -163,12 +179,16 @@ store.unset(name)
   function's `local PATH` cannot outlive its scope in the dispatcher. Repro:
   `PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; }; f; probe` runs B then A
   (bash 5.3.15) — before the observer owned pops it ran B twice (C044).
-- The four declaration builtins (`declare`/`export`/`readonly`, with
+- The declaration builtins (`declare`/`typeset`/`export`/`readonly`, with
   `readonly` delegating to `declare -r`) run their SCALAR path through one
   `DeclarationEngine` (`builtins/declaration_engine.py`) that commits via the
-  store. `local` keeps `ScopeManager.create_local` (its redeclare-merge,
-  exported-shadow inheritance, and same-scope tombstone semantics are
-  local-specific) — folding it into the store is Phase 4.
+  door with a `TargetScope`. `local` commits through the same door with
+  `TargetScope.LOCAL`, which routes to the `local`-specific primitive
+  (redeclare-merge, exported-shadow inheritance, tombstone semantics — a
+  tombstone keeps its attributes across a redeclare, W1-N18). The two local
+  implementations (`_set_variable(local=True)` for an in-function `declare`,
+  `_create_local` for `local`) are still separate primitives behind the one
+  door.
 
 **Write-ban invariant** (`tests/unit/core/test_variable_store_write_ban.py`):
 no production code outside `variable_store.py` and `scope.py` may write
@@ -197,10 +217,10 @@ value = state.get_variable('MY_VAR', default='')
 # Export to environment
 state.export_variable('PATH', '/usr/bin')
 
-# With attributes (via scope manager)
-state.scope_manager.set_variable(
+# With attributes / an explicit target scope (through the write door)
+state.scope_manager.store.assign(
     'readonly_var', 'fixed',
-    attributes=VarAttributes.READONLY
+    attributes=VarAttributes.READONLY, target=TargetScope.GLOBAL
 )
 ```
 
@@ -309,7 +329,7 @@ def is_my_attr(self) -> bool:
 state.scope_manager.push_scope('my_function')
 
 # Create local variable
-state.scope_manager.set_variable('local_var', 'value', local=True)
+state.scope_manager.store.assign('local_var', 'value', target=TargetScope.LOCAL)
 
 # On function exit
 state.scope_manager.pop_scope()  # local_var no longer visible
@@ -598,7 +618,7 @@ set, and a persistent-attribute OVERLAY. Two categories:
   RANDOM an ordinary variable for that scope and any nested call (dynamic
   scoping), suspending the dynamic behaviour until the scope exits, while a
   global `RANDOM=5` still SEEDS. A READONLY special (overlay readonly)
-  REFUSES a masking local outright (`create_local`'s special-readonly gate:
+  REFUSES a masking local outright (`_create_local`'s special-readonly gate:
   bash `local: SECONDS: readonly variable`, rc 1, function continues, reads
   stay dynamic). The uniformity is drift-locked by
   `tests/unit/tooling/test_variable_truth_guard.py` (every `has_lifecycle` /
@@ -684,7 +704,7 @@ through it. No production code poke `state.env[...]` directly.
 Exported variables reach `state.env` through an OBSERVER, never a direct
 write (this is the invariant the Environment Policy section declares).
 `ShellState.export_variable` (`state.py#ShellState.export_variable`) only
-sets the EXPORT attribute — `scope_manager.set_variable(..., attributes=
+sets the EXPORT attribute — `scope_manager.store.assign(..., attributes=
 VarAttributes.EXPORT, local=False, skip_temp_env=True)`. The scope manager
 then fires `variable_changed` → `_sync_exported_variable` →
 `_materialize_env_name`, the ONE place `state.env[name]` is written. No
