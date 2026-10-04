@@ -4,6 +4,76 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.798.0 (2026-09-29) - One variable write door decides `set -a` (Improvement Program 2026-09, Wave 1 slot 1.16)
+
+- P1 A VARIABLE THE USER EXPORTED WAS NOT IN THE CHILD'S ENVIRONMENT (C028):
+  `set -a` was consumed only by the plain-assignment path, so
+  `declare`/`typeset`/`local`/`readonly` silently skipped the export —
+  `set -a; f(){ local L=1; printenv L; }; f` printed nothing where bash 5.3.15
+  prints `1`, and `readonly R=1` / `declare -i n=5` stayed `-r` / `-i`.
+- The decision now lives once, at THE write door,
+  `psh/core/variable_store.py#VariableStore.assign`
+  (`_allexport_attributes`), which every whole-variable write crosses: a
+  scalar given a value is exported through every spelling (plain, `read`,
+  `for`, arithmetic, the four declaration builtins incl. `-i`, `-g`, a nameref
+  definition, inside a function; a write through a nameref marks the target);
+  a value-less declaration is exported only when it creates a new GLOBAL
+  (`declare y` at top level yes, `local y` and an in-function `declare y` no);
+  arrays, dynamic specials and attribute-only changes to an existing variable
+  never are. `export -n NAME=v` ends unexported; `declare +x NAME=v` and
+  `local +x NAME=v` end exported (bash removes the flag, then the assignment
+  re-exports) while a value-less `declare +x NAME` never is; a flag given
+  both ways (`-x +x`, `-i +i`) is removed whatever the order; and a write
+  through a GLOBAL nameref to an array ELEMENT marks the array `-ax`, as
+  bash's nameref path does for a PLAIN assignment or an explicit `-x` (a direct
+  `a[1]=v`, a `declare r=v` under `set -a`, or a `local -n` never does).
+- Structure: `ScopeManager.set_variable` / `create_local` are now the PRIVATE
+  primitives `_set_variable` / `_create_local`, called only by the store;
+  `TargetScope` gains `DYNAMIC` (plain assignment) beside
+  `DEFAULT`/`LOCAL`/`GLOBAL` and replaces the `local`/`global_scope` flag pair
+  on `store.assign`/`append`; the door resolves "inside a function" from the
+  scope stack (`has_function_scope`, ignoring temp-env scopes); `ShellState`
+  builds its option table BEFORE the scope manager and hands it in (also on
+  `clone`), so the door needs no back-reference to the shell. 14 executor/
+  builtin sites and the `local` builtin's 9 sites go through the door;
+  `ShellState.set_variable`/`export_variable` are one-line forwards. Guard:
+  `tests/unit/tooling/test_allexport_owner_ratchet_1_16.py` (no `allexport`
+  read outside the owner, synthetic offender).
+- W1-N18 closed: a declared-but-unset `local` keeps its attributes across a
+  redeclare — `local -u x; local -x x` → `declare -xu x`, and a later
+  `local x=hi` applies the tombstone's `-u` (`declare -u x="HI"`) — while
+  `unset` of such a tombstone now strips its attributes like bash, so
+  `local -u x; unset x; local x=v` starts fresh (`declare -- x="v"`).
+- Declared, not emulated: `psh -a` (the invocation flag) does not export the
+  shell's own startup seeds (`PS4`, `OPTIND`, …) as `bash -a` does — psh seeds
+  them before the invocation flags apply (W1-N86; both-sides pin, user guide
+  §17); `export -f` never serialises a `BASH_FUNC_name%%` entry (W1-N26,
+  documented as unsupported). Registered: W1-N87 (two local-write
+  implementations behind the one door), W1-N88 (a test that needs a `tmp/`
+  directory to exist), W1-N89 (`OPTIND` lacks `-i`), W1-N90 (`readonly +x`
+  accepted silently), W1-N91 (`$_` exported, child sees the literal), W1-N92
+  (`declare -a +a` accepted), W1-N93 (`readonly -n` rejected), W1-N94 (an
+  in-function `declare` on an element-bound nameref writes through where bash
+  makes a local).
+- New `CONTEXT.md` glossary (write door, write primitive, target scope,
+  tombstone, dynamic special, temp-env layer); `psh/core/CLAUDE.md` states the
+  one-door invariant with its owner symbol and a reproducing command.
+- Verification: nine C028 write-authority-matrix cells flipped (no strict
+  XPASS remains) plus 30 green cells; conformance `TestAllexportDeclarationFamily`
+  (36 rows × 3 modes, child env via `printenv`), `TestLocalTombstoneAttributeMerge`,
+  `TestAllexportDeclaredDivergences`; 21 golden rows; a 64-row unit matrix
+  driving the door's interface only; round 2 added `TestAllexportExplicitUnexport`,
+  `TestAllexportNamerefElementWrite`, the declared-then-unset tombstone rows and
+  the prefix-scope boundary rows. Adversarial verifier round 1 BOUNCE (four
+  blockers: two `+x` regressions, an unset-tombstone over-reach, the nameref
+  element case — all closed in round 2), round 2 BOUNCE (one blocker: the
+  nameref-element emulation keyed on every nameref where bash keys on a
+  GLOBAL one — closed in round 3 with the boundary pinned both ways), round 3
+  found the second edge of the same quirk (a declaration's allexport does not
+  mark the array; a plain assignment's does) — closed in round 4; round 4 PASS
+  at 985119c2 (316 novel rows over four rounds, no regression; every owner
+  mutation caught). Reports: `tmp/program-2026-09/verify/slot-1.16*.md`.
+
 ## 0.797.0 (2026-09-08) - Nightly portability: the C031 golden rows count lines without BSD padding (Improvement Program 2026-09)
 
 - The eleven `c031_*` golden rows counted their expansion-counter file with
