@@ -381,3 +381,17 @@ detailed history. (Do not record the version number here — it goes stale.)
 - Subsystem `CLAUDE.md` files carry **invariant prose and `file.py#symbol` pointers, never implementation sketches**. Reappraisal #19 found that 8 of 9 subsystem docs had drifted and in every case the worst rot was an embedded code sketch teaching a since-fixed bug. State the invariant and point at the code that enforces it. Where a sketch is genuinely irreplaceable, drift-lock it: quote the exact source lines and pin them with a `tests/unit/tooling/test_doc_snippets.py` registry entry so the guard fails the moment the code moves.
 - A pin asserts the actual target, not a proxy: the cwd via `pwd -P` (the real working directory) and a file placed there, the executable actually dispatched, the bytes actually written to the fd, the input actually consumed (fd position), the behavior of the re-parsed serialization — a return code, a restored string or AST equality alone does not close a wrong-target finding (Improvement Program 2026-09, D3).
 - Before any handoff the dev runs the pre-handoff smoke — `python run_tests.py --quick`, the touched test modules, `ruff check psh tests tools`, and `mypy` — and pastes the four tails into the handoff; the full gate stays the integrator's ceremony step (Improvement Program 2026-09, D8).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `philipwilson/psh`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root (created lazily by `/domain-modeling`). See `docs/agents/domain.md`.
