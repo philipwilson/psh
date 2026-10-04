@@ -42,7 +42,7 @@ class TestExpressionEvaluator:
             arr.set(0, match.group(0))
             for i, group in enumerate(match.groups(), start=1):
                 arr.set(i, group if group is not None else '')
-        self.state.scope_manager.set_variable(
+        self.state.scope_manager.store.assign(
             'BASH_REMATCH', arr, attributes=VarAttributes.ARRAY,
         )
 

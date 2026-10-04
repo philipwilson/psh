@@ -34,12 +34,11 @@ This module centralizes:
 
 ``declare``/``export`` adapt their option parsing into a
 :class:`DeclarationRequest` and call the engine; ``readonly`` reuses this via
-its delegation to ``declare -r``. ``local``'s FINAL scalar commit deliberately
-stays on ``ScopeManager.create_local`` (its local-specific redeclare-merge,
-exported-shadow inheritance, and same-scope tombstone semantics are not the
-generic store contract) — but it now shares every piece of shared MECHANICS
-above with ``declare``, so the two are no longer 150-line twins. Folding
-``create_local`` itself into the store is the remaining Phase 4 work.
+its delegation to ``declare -r``. ``local`` commits through the SAME write door
+(``store.assign(..., target=TargetScope.LOCAL)``), which routes to the
+``local``-specific primitive (redeclare-merge, exported-shadow inheritance,
+tombstone semantics) — so ``set -a`` is decided once at the door for all five
+spellings, and no builtin re-implements it.
 """
 from __future__ import annotations
 
@@ -48,7 +47,6 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from ..core import TargetScope, VarAttributes
-from ..core.variable_store import VariableStore
 from ..core.variables import AssociativeArray, IndexedArray
 from ..lexer.unicode_support import is_valid_name
 
@@ -85,7 +83,8 @@ def attributes_from_options(options: dict) -> VarAttributes:
 
     ``-l`` and ``-u`` are mutually exclusive; when BOTH appear in one
     declaration bash applies NEITHER (``declare -ul y; y=HeLLo`` leaves $y
-    unfolded and records neither case attribute).
+    unfolded and records neither case attribute). A flag that also appears
+    as ``+flag`` is dropped: the removal wins (``declare -x +x v`` → ``--``).
     """
     attributes = VarAttributes.NONE
     for key, attr in ATTRIBUTE_FLAGS.items():
@@ -93,6 +92,12 @@ def attributes_from_options(options: dict) -> VarAttributes:
             attributes |= attr
     if _case_cancels(options):
         attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
+    # A flag given BOTH ways in one declaration (``declare -x +x v``,
+    # ``declare +i -i n=2+3``) is REMOVED, whatever the order: bash applies the
+    # ``+`` set after the ``-`` set, so the result is ``declare -- v`` and the
+    # value is stored literally (``2+3``). Under ``set -a`` a VALUED write is
+    # still exported by the write door afterwards, as in bash.
+    attributes &= ~removed_attributes_from_options(options)
     return attributes
 
 
@@ -171,10 +176,6 @@ class DeclarationRequest:
     remove_attributes: VarAttributes = VarAttributes.NONE
     skip_temp_env: bool = False
 
-    def write_flags(self, in_function: bool) -> tuple[bool, bool]:
-        """The ``(local, global_scope)`` store flags for this request's scope."""
-        return VariableStore.resolve_write_flags(self.target_scope, in_function)
-
 
 class DeclarationEngine:
     """Executes the shared declaration mechanics via the variable store."""
@@ -184,7 +185,7 @@ class DeclarationEngine:
 
     def commit_scalar(self, name: str, value: Optional[str], *, append: bool,
                       add_attributes: VarAttributes = VarAttributes.NONE,
-                      local: bool = False, global_scope: bool = False,
+                      target: TargetScope = TargetScope.DEFAULT,
                       skip_temp_env: bool = False) -> None:
         """Assign or append a scalar through the store — the single commit
         chokepoint for declaration-family scalar writes.
@@ -199,21 +200,18 @@ class DeclarationEngine:
         store = self.shell.state.scope_manager.store
         if append:
             store.append(name, value or '', attributes=add_attributes,
-                         local=local, global_scope=global_scope,
-                         skip_temp_env=skip_temp_env)
+                         target=target, skip_temp_env=skip_temp_env)
         else:
-            store.assign(name, value, attributes=add_attributes, local=local,
-                         global_scope=global_scope, skip_temp_env=skip_temp_env)
+            store.assign(name, value, attributes=add_attributes, target=target,
+                         skip_temp_env=skip_temp_env)
 
     def commit_request_scalar(self, request: DeclarationRequest,
                               assignment: DeclarationAssignment) -> None:
         """Commit one scalar assignment of a :class:`DeclarationRequest`."""
-        local, global_scope = request.write_flags(
-            bool(self.shell.state.function_stack))
         self.commit_scalar(
             assignment.name, assignment.value, append=assignment.append,
-            add_attributes=request.add_attributes, local=local,
-            global_scope=global_scope, skip_temp_env=request.skip_temp_env)
+            add_attributes=request.add_attributes, target=request.target_scope,
+            skip_temp_env=request.skip_temp_env)
 
     @staticmethod
     def array_conversion_error(existing: Optional["Variable"],
@@ -271,8 +269,7 @@ class DeclarationEngine:
     def scalar_append_into_array(self, name: str, value: str, *, assoc: bool,
                                  add_attributes: VarAttributes,
                                  existing: Optional["Variable"],
-                                 local: bool = False,
-                                 global_scope: bool = False) -> None:
+                                 target: TargetScope = TargetScope.DEFAULT) -> None:
         """Commit ``NAME+=scalar`` when an explicit ``-a``/``-A`` is present and
         the base is (or converts to) an array — appending onto element 0.
 
@@ -310,4 +307,4 @@ class DeclarationEngine:
         new_container = store.compute_append_value(
             base_var, value, extra_attrs=add_attributes)
         store.assign(name, new_container, attributes=add_attributes,
-                     local=local, global_scope=global_scope)
+                     target=target)

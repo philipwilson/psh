@@ -482,12 +482,11 @@ class DeclareBuiltin(Builtin):
             existing = self._existing_in_target_scope(shell, name, options['global'])
             kind_attr = (VarAttributes.ASSOC_ARRAY if as_assoc
                          else VarAttributes.ARRAY)
-            in_function = (bool(shell.state.function_stack)
-                           and not options['global'])
             engine.scalar_append_into_array(
                 name, value, assoc=as_assoc,
                 add_attributes=attributes | kind_attr, existing=existing,
-                local=in_function, global_scope=options['global'])
+                target=(TargetScope.GLOBAL if options['global']
+                        else TargetScope.DEFAULT))
 
         elif scalar_into_array and as_assoc:
             array = AssociativeArray()
@@ -643,7 +642,8 @@ class DeclareBuiltin(Builtin):
                 else:
                     self._set_variable_with_attributes(
                         shell, target, "",
-                        attributes | VarAttributes.UNSET, options['global'])
+                        attributes | VarAttributes.UNSET, options['global'],
+                        remove_attrs=remove_attrs)
                 return 0
             existing = self._declared_in_target_scope(shell, arg, options['global'])
             if existing:
@@ -661,7 +661,8 @@ class DeclareBuiltin(Builtin):
                 # fails; assignment makes both appear).
                 self._set_variable_with_attributes(
                     shell, arg, "",
-                    attributes | VarAttributes.UNSET, options['global'])
+                    attributes | VarAttributes.UNSET, options['global'],
+                    remove_attrs=remove_attrs)
         return 0
     def _print_variables(self, options: dict, names: List[str], shell: 'Shell') -> int:
         """Print variables with attributes using declare -p format."""
@@ -775,7 +776,8 @@ class DeclareBuiltin(Builtin):
         return shell.state.scope_manager.all_variables_with_attributes()
 
     def _set_variable_with_attributes(self, shell: 'Shell', name: str,
-                                     value: Any, attributes: VarAttributes, global_flag: bool = False):
+                                     value: Any, attributes: VarAttributes, global_flag: bool = False,
+                                     remove_attrs: VarAttributes = VarAttributes.NONE):
         """Set variable with attributes.
 
         With -g the write is forced to the global scope (past any local of
@@ -787,15 +789,11 @@ class DeclareBuiltin(Builtin):
         ``psh: declare: NAME: readonly variable`` line. The former re-wrap
         here produced a triple-nested message.
         """
-        # (set_variable fires the scope manager's observer, which keeps
-        # state.env in sync for export-attributed variables)
-        if global_flag:
-            shell.state.scope_manager.set_variable(
-                name, value, attributes=attributes, global_scope=True)
-        else:
-            shell.state.scope_manager.set_variable(
-                name, value, attributes=attributes,
-                local=bool(shell.state.function_stack))
+        # The write door decides ``set -a`` and fires the scope manager's
+        # observer (which keeps state.env in sync for exported variables).
+        shell.state.scope_manager.store.assign(
+            name, value, attributes=attributes, remove_attributes=remove_attrs,
+            target=(TargetScope.GLOBAL if global_flag else TargetScope.DEFAULT))
 
     def _print_function_definition(self, name, func, shell: 'Shell'):
         """Print a function definition in a format that can be re-executed."""

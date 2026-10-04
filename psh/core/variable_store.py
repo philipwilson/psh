@@ -17,9 +17,17 @@ store per manager and exposes it as ``scope_manager.store``; ``clone()`` makes a
 fresh manager (hence a fresh store) so a child shell's writes never reach the
 parent.
 
-- Whole-variable operations (:meth:`assign`, :meth:`unset`,
-  :meth:`add_attributes`, :meth:`remove_attributes`) are a thin, typed facade
-  over the manager's existing authoritative methods.
+- :meth:`assign` is THE write door for whole-variable writes: every plain
+  assignment, declaration-family scalar commit, array replacement and
+  ``local`` binding crosses it. It owns the ``set -a`` (allexport) decision —
+  see :meth:`_allexport_attributes` for the bash 5.3 rule — and routes to the
+  manager's PRIVATE primitives (``_set_variable`` for the dynamic/declaration/
+  global targets, ``_create_local`` for the ``local`` builtin) by
+  :class:`TargetScope`. Nothing outside this module calls those primitives
+  (``tests/unit/tooling/test_allexport_owner_ratchet_1_16.py`` guards the
+  option read; the leading underscore guards the call).
+- :meth:`unset`, :meth:`add_attributes`, :meth:`remove_attributes` are typed
+  forwards over the manager's authoritative attribute/unset methods.
 - :meth:`append` is a first-class transaction: it resolves the nameref, reads
   the append base from the *target* scope (``-g`` reads the global instance,
   not a local shadow), computes the new value via :meth:`compute_append_value`,
@@ -37,9 +45,9 @@ parent.
   the element value (which is expansion-layer work) and hand the store the
   resolved pieces; they never touch ``.value.set()`` directly.
 
-Splitting ``ScopeManager`` and injecting an arithmetic-evaluator protocol
-(removing the store's reach into the manager's private transform helpers) is
-deferred to Phase 4.
+Injecting an arithmetic-evaluator protocol (removing the store's reach into the
+manager's private transform helpers and the manager's ``_shell`` back-reference)
+remains deferred.
 """
 
 from __future__ import annotations
@@ -56,15 +64,21 @@ if TYPE_CHECKING:
 
 
 class TargetScope(Enum):
-    """Which scope a declaration-family write targets.
+    """Which scope a whole-variable write targets (the door's one selector).
 
-    - ``DEFAULT``: dynamic-scoping default — the innermost instance of the name,
-      or a new global when none exists (a bare ``declare`` at top level; inside
-      a function a bare ``declare`` is local, expressed by the builtin passing
-      ``DEFAULT`` with ``in_function`` — see :meth:`resolve_write_flags`).
-    - ``LOCAL``: force the current scope (the ``local`` builtin).
+    - ``DYNAMIC``: a plain assignment (``x=v``, ``read``, ``for``, arithmetic):
+      rebind the innermost visible instance of the name — a declared-but-unset
+      local counts — or create a global when none exists (bash dynamic scoping).
+    - ``DEFAULT``: a declaration's default (``declare``/``typeset``/``readonly``
+      without ``-g``): the CURRENT scope inside a function (a bare ``declare
+      NAME`` in a function is a local), the global scope at top level. The door
+      resolves "inside a function" itself from the scope stack.
+    - ``LOCAL``: the ``local`` builtin — the current function scope, with
+      ``local``'s redeclare-merge, exported-shadow inheritance and tombstone
+      rules (:meth:`ScopeManager._create_local`).
     - ``GLOBAL``: force the global scope past any local shadow (``declare -g``).
     """
+    DYNAMIC = auto()
     DEFAULT = auto()
     LOCAL = auto()
     GLOBAL = auto()
@@ -77,23 +91,118 @@ class VariableStore:
         self._sm = scope_manager
 
     # ------------------------------------------------------------------ #
-    # Whole-variable operations — typed facade over the ScopeManager
-    # authority (which already enforces readonly + fires the observers).
+    # The write door: policy (allexport) + routing to the private primitives.
     # ------------------------------------------------------------------ #
 
     def assign(self, name: str, value: object, *,
                attributes: VarAttributes = VarAttributes.NONE,
-               local: bool = False, global_scope: bool = False,
+               remove_attributes: VarAttributes = VarAttributes.NONE,
+               target: TargetScope = TargetScope.DYNAMIC,
                skip_temp_env: bool = False) -> None:
-        """Assign ``value`` to ``name`` in the appropriate scope.
+        """Write ``value`` to ``name`` — THE door every whole-variable write
+        crosses.
 
-        See :meth:`ScopeManager.set_variable` for the full local/global/
-        temp-env target-selection contract; this is the store's public entry
-        point for it. Raises :class:`ReadonlyVariableError` (unchanged state)
-        for a readonly target.
+        ``target`` selects the scope rule (see :class:`TargetScope`);
+        ``skip_temp_env`` (``export`` / ``cd``) steps past a command's temp-env
+        prefix layer to the variable's real home. ``value`` may be a string, an
+        array container (a whole-array replacement), or ``None`` for a
+        value-less ``local NAME`` (a declared-but-unset tombstone; the
+        declaration builtins express the same thing as ``""`` plus
+        ``VarAttributes.UNSET``).
+
+        ``remove_attributes`` are the attributes a declaration explicitly
+        REMOVES (``declare +x``, ``local +x``): the primitives strip them from
+        the attributes the write would otherwise inherit (a redeclared cell, an
+        exported variable a fresh ``local`` shadows), and an explicit ``+x`` on
+        a value-less declaration suppresses allexport (bash: ``set -a; declare
+        +x v`` stays unexported while ``declare +x v=1`` is exported).
+
+        The ``set -a`` decision is made HERE, once, by
+        :meth:`_allexport_attributes`, so every spelling inherits it. Raises
+        :class:`ReadonlyVariableError` (state unchanged) for a readonly target
+        and :class:`NamerefCycleError` for a cyclic nameref.
         """
-        self._sm.set_variable(name, value, attributes=attributes, local=local,
-                              global_scope=global_scope, skip_temp_env=skip_temp_env)
+        added = self._allexport_attributes(name, value, attributes, target,
+                                           remove_attributes)
+        # bash marks an ARRAY exported for a write through a global nameref to
+        # one of its elements only when the EXPORT is explicit (``declare -x
+        # r=5``) or when a PLAIN assignment runs under ``set -a`` (``r=5``); a
+        # declaration under ``set -a`` (``declare r=5``, ``declare -g r=5``)
+        # leaves the array alone. The primitive gets that decision, not the bit.
+        array_export = bool(attributes & VarAttributes.EXPORT) or (
+            bool(added & VarAttributes.EXPORT) and target is TargetScope.DYNAMIC)
+        attributes |= added
+        if target is TargetScope.LOCAL:
+            self._sm._create_local(name, value, attributes,
+                                   remove_attributes=remove_attributes)
+            return
+        self._sm._set_variable(
+            name, value, attributes=attributes,
+            local=(target is TargetScope.DEFAULT and self._sm.has_function_scope()),
+            global_scope=(target is TargetScope.GLOBAL),
+            skip_temp_env=skip_temp_env, array_export=array_export)
+
+    def _allexport_attributes(self, name: str, value: object,
+                              attributes: VarAttributes,
+                              target: TargetScope,
+                              remove_attributes: VarAttributes = VarAttributes.NONE
+                              ) -> VarAttributes:
+        """The EXPORT bit ``set -a`` adds to this write, or NONE.
+
+        bash 5.3.15's rule, probed across every spelling (the pins live in
+        ``tests/conformance/bash/test_export_env_sync_conformance.py``
+        ``TestAllexportDeclarationFamily`` and the write-authority matrix):
+
+        - a SCALAR given a VALUE is exported — a plain assignment, ``read``,
+          ``for``, arithmetic, ``declare``/``typeset``/``readonly``/``local``
+          with ``NAME=value`` (including ``-i``, ``-g``, a nameref definition,
+          and inside a function), and a write through a nameref marks the
+          TARGET;
+        - a value-less declaration (``declare NAME``, ``readonly NAME``,
+          ``declare -g NAME`` — expressed as ``""`` + UNSET) is exported only
+          when it lands in the GLOBAL scope: a value-less ``local NAME`` or an
+          in-function ``declare NAME`` is not — and an explicit ``+x`` on a
+          value-less declaration (``declare +x v``, ``declare +x -i n``) is
+          never exported, while ``declare +x v=1`` / ``local +x v=1`` ARE
+          (bash removes the flag, then the assignment re-exports);
+        - a PLAIN assignment through a GLOBAL nameref to an array ELEMENT
+          marks the ARRAY exported (``declare -n r='a[1]'; r=5`` →
+          ``declare -ax a``), as does an explicit ``declare -x r=5``, where a
+          direct ``a[1]=5`` does not — bash's nameref path rebinds the array;
+          a declaration under ``set -a`` (``declare r=5``, ``declare -g r=5``)
+          and a LOCAL nameref (``local -n``, an in-function ``declare -n``)
+          never mark it, wherever the write happens;
+        - a whole-array write never is (bash does not export arrays), nor is a
+          dynamic special (``set -a; RANDOM=5`` seeds RANDOM unexported);
+        - an attribute-only change to an EXISTING variable never reaches this
+          door (``apply_attribute``), so ``x=1; set -a; declare -r x`` stays
+          ``-r`` like bash.
+
+        ``export -n NAME=v`` ends unexported and ``declare +x NAME=v`` ends
+        exported, exactly as in bash: the builtins remove the attribute after
+        (``export -n``) or before (``declare +x``) this write, and the door
+        does not second-guess that order.
+        """
+        if not self._sm.options.get('allexport', False):
+            return VarAttributes.NONE
+        if isinstance(value, (IndexedArray, AssociativeArray)):
+            return VarAttributes.NONE
+        if attributes & (VarAttributes.ARRAY | VarAttributes.ASSOC_ARRAY):
+            return VarAttributes.NONE
+        if self._sm.is_dynamic_special(name):
+            return VarAttributes.NONE
+        valueless = value is None or bool(attributes & VarAttributes.UNSET)
+        if valueless:
+            if remove_attributes & VarAttributes.EXPORT:
+                return VarAttributes.NONE
+            lands_global = (target is TargetScope.GLOBAL
+                            or (target is TargetScope.DYNAMIC
+                                and not self._sm.has_function_scope())
+                            or (target is TargetScope.DEFAULT
+                                and not self._sm.has_function_scope()))
+            if not lands_global:
+                return VarAttributes.NONE
+        return VarAttributes.EXPORT
 
     def unset(self, name: str) -> None:
         """Unset the innermost instance of ``name`` (dynamic scoping)."""
@@ -169,7 +278,7 @@ class VariableStore:
 
     def append(self, name: str, value: str, *,
                attributes: VarAttributes = VarAttributes.NONE,
-               local: bool = False, global_scope: bool = False,
+               target: TargetScope = TargetScope.DYNAMIC,
                skip_temp_env: bool = False) -> None:
         """Append ``value`` to ``name`` (``NAME+=value``) as one transaction.
 
@@ -182,15 +291,16 @@ class VariableStore:
         observers still apply). A cyclic nameref raises
         :class:`NamerefCycleError`, like a direct write.
         """
-        target = self._sm.resolve_nameref_name(name)
+        resolved = self._sm.resolve_nameref_name(name)
         base_var = self._instance_in_write_target(
-            target, global_scope=global_scope, skip_temp_env=skip_temp_env)
+            resolved, global_scope=(target is TargetScope.GLOBAL),
+            skip_temp_env=skip_temp_env)
         # ``attributes`` are the declaration's being-added flags (``declare -i
         # n+=3`` marks n integer in this same op), so they count toward the
         # effective integer decision even when the base is not yet integer.
         new_value = self.compute_append_value(base_var, value, extra_attrs=attributes)
-        self.assign(name, new_value, attributes=attributes, local=local,
-                    global_scope=global_scope, skip_temp_env=skip_temp_env)
+        self.assign(name, new_value, attributes=attributes, target=target,
+                    skip_temp_env=skip_temp_env)
 
     # ------------------------------------------------------------------ #
     # Array-element operations — guarded commit primitives.
@@ -226,7 +336,7 @@ class VariableStore:
             # array through the manager so the ARRAY attribute + observers apply.
             arr = IndexedArray()
             arr.set(int(key) if isinstance(key, int) else 0, value)
-            self._sm.set_variable(target, arr, attributes=VarAttributes.ARRAY)
+            self._sm._set_variable(target, arr, attributes=VarAttributes.ARRAY)
             return
         self._sm._effective_binding_changed(target)
         self._sm._notify_variable_changed(target)
@@ -276,22 +386,6 @@ class VariableStore:
             return None if (var is not None and var.is_unset) else var
         # Default: the innermost visible instance (tombstones hidden).
         return self._sm.get_variable_object(name)
-
-    @staticmethod
-    def resolve_write_flags(target: TargetScope, in_function: bool) -> tuple[bool, bool]:
-        """Map a :class:`TargetScope` (+ whether we're in a function) to the
-        ``(local, global_scope)`` flag pair the store/manager writes take.
-
-        ``DEFAULT`` inside a function is local (a bare ``declare NAME`` == ``local
-        NAME``); at top level it is a global. ``LOCAL`` is always the current
-        scope; ``GLOBAL`` is always the global scope. Used by the declaration
-        engine so scope policy lives in one place.
-        """
-        if target is TargetScope.GLOBAL:
-            return (False, True)
-        if target is TargetScope.LOCAL:
-            return (True, False)
-        return (in_function, False)  # DEFAULT
 
     # Re-exported so callers can catch a cyclic-nameref write without importing
     # from two modules.

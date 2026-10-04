@@ -86,7 +86,7 @@ class DebugASTBuiltin(Builtin):
             elif arg in ('tree', 'pretty', 'compact', 'dot', 'sexp'):
                 # Format specified - enable debug and set format
                 shell.state.options['debug-ast'] = True
-                shell.state.scope_manager.set_variable('PSH_AST_FORMAT', arg)
+                shell.state.scope_manager.store.assign('PSH_AST_FORMAT', arg)
                 self.write_line(f"AST debugging enabled (format: {arg})", shell)
                 return 0
 
@@ -110,7 +110,7 @@ class DebugASTBuiltin(Builtin):
 
             if action in ('on', 'enable', 'true', '1'):
                 shell.state.options['debug-ast'] = True
-                shell.state.scope_manager.set_variable('PSH_AST_FORMAT', format_arg)
+                shell.state.scope_manager.store.assign('PSH_AST_FORMAT', format_arg)
                 self.write_line(f"AST debugging enabled (format: {format_arg})", shell)
             else:
                 shell.state.options['debug-ast'] = False

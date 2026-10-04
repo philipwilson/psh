@@ -17,13 +17,14 @@ tests/conformance/bash/test_variable_truth_conformance.py.
 
 from psh.core.scope import ScopeManager
 from psh.core.variable_lookup import LookupStatus, VariableLookup
+from psh.core.variable_store import TargetScope
 from psh.core.variables import VarAttributes
 
 
 class TestTriStateStatus:
     def test_value_of_a_plain_variable(self):
         mgr = ScopeManager()
-        mgr.set_variable('X', 'v')
+        mgr.store.assign('X', 'v')
         r = mgr.lookup('X')
         assert r.status is LookupStatus.VALUE
         assert r.is_set is True
@@ -44,7 +45,7 @@ class TestTriStateStatus:
         """`local x` (no value) — a declared-unset cell, reads unset, shadows."""
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('x')  # bare `local x`
+        mgr.store.assign('x', None, target=TargetScope.LOCAL)  # bare `local x`
         r = mgr.lookup('x')
         assert r.status is LookupStatus.PRESENT_UNSET
         assert r.is_set is False
@@ -57,7 +58,7 @@ class TestTriStateStatus:
         """`local x=1; unset x` plants a tombstone: PRESENT_UNSET, not MISSING."""
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('x', '1')
+        mgr.store.assign('x', '1', target=TargetScope.LOCAL)
         mgr.unset_variable('x')
         r = mgr.lookup('x')
         assert r.status is LookupStatus.PRESENT_UNSET
@@ -65,7 +66,7 @@ class TestTriStateStatus:
 
     def test_empty_string_value_is_value_not_unset(self):
         mgr = ScopeManager()
-        mgr.set_variable('X', '')
+        mgr.store.assign('X', '')
         r = mgr.lookup('X')
         assert r.status is LookupStatus.VALUE
         assert r.value == ''
@@ -77,9 +78,9 @@ class TestNoEnvironmentResurrection:
 
     def test_declared_unset_local_shadows_exported_global(self):
         mgr = ScopeManager()
-        mgr.set_variable('FOO', 'outer', attributes=VarAttributes.EXPORT)
+        mgr.store.assign('FOO', 'outer', attributes=VarAttributes.EXPORT)
         mgr.push_scope('f')
-        mgr.create_local('FOO')  # `local FOO` shadows the exported outer
+        mgr.store.assign('FOO', None, target=TargetScope.LOCAL)  # `local FOO` shadows the exported outer
         r = mgr.lookup('FOO')
         assert r.status is LookupStatus.PRESENT_UNSET
         assert r.value is None
@@ -90,9 +91,9 @@ class TestNoEnvironmentResurrection:
 
     def test_unset_local_then_lookup_stops_at_tombstone(self):
         mgr = ScopeManager()
-        mgr.set_variable('FOO', 'outer', attributes=VarAttributes.EXPORT)
+        mgr.store.assign('FOO', 'outer', attributes=VarAttributes.EXPORT)
         mgr.push_scope('f')
-        mgr.create_local('FOO', 'inner')
+        mgr.store.assign('FOO', 'inner', target=TargetScope.LOCAL)
         mgr.unset_variable('FOO')
         assert mgr.lookup('FOO').status is LookupStatus.PRESENT_UNSET
         mgr.pop_scope()
@@ -101,15 +102,15 @@ class TestNoEnvironmentResurrection:
 class TestNamerefLookup:
     def test_lookup_follows_nameref_to_value(self):
         mgr = ScopeManager()
-        mgr.set_variable('target', 'hi')
-        mgr.set_variable('r', 'target', attributes=VarAttributes.NAMEREF)
+        mgr.store.assign('target', 'hi')
+        mgr.store.assign('r', 'target', attributes=VarAttributes.NAMEREF)
         r = mgr.lookup('r')
         assert r.status is LookupStatus.VALUE
         assert r.value == 'hi'
 
     def test_lookup_nameref_to_unset_is_unset(self):
         mgr = ScopeManager()
-        mgr.set_variable('r', 'target', attributes=VarAttributes.NAMEREF)
+        mgr.store.assign('r', 'target', attributes=VarAttributes.NAMEREF)
         # target does not exist
         assert mgr.lookup('r').is_set is False
 
@@ -119,7 +120,7 @@ class TestGetVariableProjection:
 
     def test_get_variable_returns_value(self):
         mgr = ScopeManager()
-        mgr.set_variable('X', 'v')
+        mgr.store.assign('X', 'v')
         assert mgr.get_variable('X') == 'v'
 
     def test_get_variable_default_for_missing(self):
@@ -129,7 +130,7 @@ class TestGetVariableProjection:
     def test_get_variable_default_for_declared_unset(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('x')
+        mgr.store.assign('x', None, target=TargetScope.LOCAL)
         assert mgr.get_variable('x', 'D') == 'D'
         mgr.pop_scope()
 

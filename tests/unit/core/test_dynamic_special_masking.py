@@ -7,6 +7,7 @@ tests/conformance/bash/test_dynamic_special_scoping_conformance.py.
 """
 
 from psh.core.scope import ScopeManager
+from psh.core.variable_store import TargetScope
 
 
 class TestLocalShadowsSpecialPredicate:
@@ -17,21 +18,21 @@ class TestLocalShadowsSpecialPredicate:
     def test_shadow_when_local_present(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         assert mgr._local_shadows_special('RANDOM') is True
         mgr.pop_scope()
 
     def test_non_special_name_is_never_shadowed(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('ordinary', 'v')
+        mgr.store.assign('ordinary', 'v', target=TargetScope.LOCAL)
         assert mgr._local_shadows_special('ordinary') is False
         mgr.pop_scope()
 
     def test_shadow_visible_in_nested_scope(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         mgr.push_scope('g')  # nested call
         assert mgr._local_shadows_special('RANDOM') is True
         mgr.pop_scope()
@@ -42,7 +43,7 @@ class TestMaskedRead:
     def test_masked_random_reads_the_local(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         assert mgr.get_variable_object('RANDOM').value == '5'
         assert mgr.get_variable('RANDOM') == '5'
         mgr.pop_scope()
@@ -50,7 +51,7 @@ class TestMaskedRead:
     def test_declare_p_read_sees_the_local(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         cell = mgr.get_declared_variable_object('RANDOM')
         assert cell.value == '5'
         # A plain local, not the INTEGER-attributed dynamic special.
@@ -65,7 +66,7 @@ class TestMaskedRead:
     def test_special_returns_after_scope_pop(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         assert mgr.get_variable('RANDOM') == '5'
         mgr.pop_scope()
         # dynamic behaviour restored
@@ -76,15 +77,15 @@ class TestMaskedMutation:
     def test_assign_updates_local_not_seed(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
-        mgr.set_variable('RANDOM', '6')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
+        mgr.store.assign('RANDOM', '6')
         assert mgr.get_variable('RANDOM') == '6'
         mgr.pop_scope()
 
     def test_unset_leaves_tombstone_no_resurrection(self):
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('RANDOM', '5')
+        mgr.store.assign('RANDOM', '5', target=TargetScope.LOCAL)
         mgr.unset_variable('RANDOM')
         # own-scope tombstone: reads as unset, does NOT resurrect the special
         assert mgr.lookup('RANDOM').is_set is False
@@ -114,5 +115,5 @@ class TestReadonlySpecialRefusesLocal:
         captured_shell.run_command('readonly RANDOM')
         mgr.push_scope('f')
         with pytest.raises(ReadonlyVariableError):
-            mgr.create_local('RANDOM', '7')
+            mgr.store.assign('RANDOM', '7', target=TargetScope.LOCAL)
         mgr.pop_scope()

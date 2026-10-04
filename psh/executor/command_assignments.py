@@ -686,8 +686,8 @@ class CommandAssignments:
                     'was_exported': bool(existing and existing.is_exported),
                 }
             try:
-                scope_manager.set_variable(
-                    var, resolved, attributes=VarAttributes.EXPORT, local=False)
+                scope_manager.store.assign(
+                    var, resolved, attributes=VarAttributes.EXPORT)
             except ReadonlyVariableError as e:
                 # Use e.name so a readonly array-element write reports the array
                 # name (``a[0]=X cmd`` -> ``a: readonly variable``).
@@ -780,9 +780,8 @@ class CommandAssignments:
             layer = dict(scope_manager.command_temp_env[-1])
             scope_manager.pop_command_temp_env()
             for name, var in layer.items():
-                scope_manager.set_variable(
-                    name, var.value,
-                    attributes=VarAttributes.EXPORT, local=False)
+                scope_manager.store.assign(
+                    name, var.value, attributes=VarAttributes.EXPORT)
 
         self.state.restore_command_env(prefix.saved.keys())
 

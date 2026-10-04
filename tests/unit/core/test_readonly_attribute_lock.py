@@ -19,6 +19,7 @@ import pytest
 
 from psh.core.exceptions import ReadonlyVariableError
 from psh.core.scope import READONLY_LOCKED_ATTRIBUTES, ScopeManager
+from psh.core.variable_store import TargetScope
 from psh.core.variables import VarAttributes
 
 LOCKED = [
@@ -38,7 +39,7 @@ ALLOWED = [
 
 def _readonly_scalar(value="1", attributes=VarAttributes.NONE):
     mgr = ScopeManager()
-    mgr.set_variable("R", value, attributes=attributes | VarAttributes.READONLY)
+    mgr.store.assign("R", value, attributes=attributes | VarAttributes.READONLY)
     return mgr
 
 
@@ -113,7 +114,7 @@ class TestAllowedHalf:
 
     def test_writable_variable_accepts_every_locked_attribute(self):
         mgr = ScopeManager()
-        mgr.set_variable("W", "1")
+        mgr.store.assign("W", "1")
         for attr in LOCKED:
             mgr.apply_attribute("W", attr)
         assert mgr.get_variable_object("W").attributes & VarAttributes.INTEGER
@@ -136,8 +137,10 @@ class TestNamerefRemovalCarveOut:
 
     def test_plus_n_on_a_readonly_nameref_refuses(self):
         mgr = ScopeManager()
-        mgr.set_variable("T", "1")
-        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+        mgr.store.assign("T", "1")
+        mgr.store.assign("r",
+            "T",
+            attributes=(VarAttributes.NAMEREF
                                                | VarAttributes.READONLY))
         with pytest.raises(ReadonlyVariableError):
             mgr.remove_attribute("r", VarAttributes.NAMEREF)
@@ -150,9 +153,9 @@ class TestNamerefResolvedTarget:
 
     def test_locked_change_through_a_nameref_refuses_and_names_the_target(self):
         mgr = ScopeManager()
-        mgr.set_variable("R", "1", attributes=VarAttributes.READONLY)
-        mgr.set_variable("a", "R", attributes=VarAttributes.NAMEREF)
-        mgr.set_variable("b", "a", attributes=VarAttributes.NAMEREF)
+        mgr.store.assign("R", "1", attributes=VarAttributes.READONLY)
+        mgr.store.assign("a", "R", attributes=VarAttributes.NAMEREF)
+        mgr.store.assign("b", "a", attributes=VarAttributes.NAMEREF)
         with pytest.raises(ReadonlyVariableError) as exc:
             mgr.apply_attribute("b", VarAttributes.INTEGER)
         assert exc.value.name == "R"
@@ -160,8 +163,10 @@ class TestNamerefResolvedTarget:
     def test_readonly_nameref_to_a_writable_target_allows_the_change(self):
         """The readonly is on the nameref cell, not on what it points at."""
         mgr = ScopeManager()
-        mgr.set_variable("T", "1")
-        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+        mgr.store.assign("T", "1")
+        mgr.store.assign("r",
+            "T",
+            attributes=(VarAttributes.NAMEREF
                                                | VarAttributes.READONLY))
         mgr.apply_attribute("r", VarAttributes.INTEGER)
         assert mgr.get_variable_object("T").is_integer
@@ -185,8 +190,10 @@ class TestOwnerResolvesTheNameItself:
         nothing is refused.  Deleting the owner's resolution makes this raise.
         """
         mgr = ScopeManager()
-        mgr.set_variable("T", "1")
-        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+        mgr.store.assign("T", "1")
+        mgr.store.assign("r",
+            "T",
+            attributes=(VarAttributes.NAMEREF
                                                | VarAttributes.READONLY))
         mgr.check_readonly_attribute_change("r", VarAttributes.ARRAY)
 
@@ -194,9 +201,9 @@ class TestOwnerResolvesTheNameItself:
         """Two hops to a readonly target: refused, and the error names the
         TARGET.  Deleting the owner's resolution makes this pass silently."""
         mgr = ScopeManager()
-        mgr.set_variable("R", "1", attributes=VarAttributes.READONLY)
-        mgr.set_variable("a", "R", attributes=VarAttributes.NAMEREF)
-        mgr.set_variable("b", "a", attributes=VarAttributes.NAMEREF)
+        mgr.store.assign("R", "1", attributes=VarAttributes.READONLY)
+        mgr.store.assign("a", "R", attributes=VarAttributes.NAMEREF)
+        mgr.store.assign("b", "a", attributes=VarAttributes.NAMEREF)
         with pytest.raises(ReadonlyVariableError) as exc:
             mgr.check_readonly_attribute_change("b", VarAttributes.INTEGER)
         assert exc.value.name == "R"
@@ -206,8 +213,10 @@ class TestOwnerResolvesTheNameItself:
         reference, or a readonly reference cell would be judged by its target.
         """
         mgr = ScopeManager()
-        mgr.set_variable("T", "1")
-        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+        mgr.store.assign("T", "1")
+        mgr.store.assign("r",
+            "T",
+            attributes=(VarAttributes.NAMEREF
                                                | VarAttributes.READONLY))
         with pytest.raises(ReadonlyVariableError) as exc:
             mgr.check_readonly_attribute_change("r", VarAttributes.NAMEREF)
@@ -225,9 +234,9 @@ class TestGlobalScopeParameter:
 
     def test_global_change_ignores_a_readonly_local_shadow(self):
         mgr = ScopeManager()
-        mgr.set_variable("R", "1")
+        mgr.store.assign("R", "1")
         mgr.push_scope("f")
-        mgr.create_local("R", "2", VarAttributes.READONLY)
+        mgr.store.assign("R", "2", attributes=VarAttributes.READONLY, target=TargetScope.LOCAL)
         mgr.apply_attribute("R", VarAttributes.INTEGER, global_scope=True)
         assert mgr.global_scope.variables["R"].is_integer
         local = mgr.current_scope.variables["R"]
@@ -236,9 +245,9 @@ class TestGlobalScopeParameter:
     def test_local_change_still_sees_the_readonly_local(self):
         """The control: without `global_scope` the same edit is refused."""
         mgr = ScopeManager()
-        mgr.set_variable("R", "1")
+        mgr.store.assign("R", "1")
         mgr.push_scope("f")
-        mgr.create_local("R", "2", VarAttributes.READONLY)
+        mgr.store.assign("R", "2", attributes=VarAttributes.READONLY, target=TargetScope.LOCAL)
         with pytest.raises(ReadonlyVariableError):
             mgr.apply_attribute("R", VarAttributes.INTEGER)
         assert not mgr.global_scope.variables["R"].is_integer
@@ -255,28 +264,28 @@ class TestLocalScope:
 
     def test_locked_attribute_on_a_readonly_local_refuses(self):
         mgr = self._in_function()
-        mgr.create_local("x", "1", VarAttributes.READONLY)
+        mgr.store.assign("x", "1", attributes=VarAttributes.READONLY, target=TargetScope.LOCAL)
         with pytest.raises(ReadonlyVariableError):
-            mgr.create_local("x", None, VarAttributes.INTEGER)
+            mgr.store.assign("x", None, attributes=VarAttributes.INTEGER, target=TargetScope.LOCAL)
         var = mgr.get_variable_object("x")
         assert var.is_readonly and not var.is_integer and var.value == "1"
 
     def test_allowed_attribute_on_a_readonly_local_merges(self):
         mgr = self._in_function()
-        mgr.create_local("x", "1", VarAttributes.READONLY)
-        mgr.create_local("x", None, VarAttributes.EXPORT)
+        mgr.store.assign("x", "1", attributes=VarAttributes.READONLY, target=TargetScope.LOCAL)
+        mgr.store.assign("x", None, attributes=VarAttributes.EXPORT, target=TargetScope.LOCAL)
         var = mgr.get_variable_object("x")
         assert var.is_readonly and var.is_exported
 
     def test_locked_attribute_on_a_readonly_global_refuses_from_a_function(self):
         mgr = ScopeManager()
-        mgr.set_variable("R", "1", attributes=VarAttributes.READONLY)
+        mgr.store.assign("R", "1", attributes=VarAttributes.READONLY)
         mgr.push_scope("f")
         with pytest.raises(ReadonlyVariableError):
             mgr.apply_attribute("R", VarAttributes.INTEGER)
 
     def test_writable_local_still_takes_a_locked_attribute(self):
         mgr = self._in_function()
-        mgr.create_local("x", "1")
-        mgr.create_local("x", None, VarAttributes.INTEGER)
+        mgr.store.assign("x", "1", target=TargetScope.LOCAL)
+        mgr.store.assign("x", None, attributes=VarAttributes.INTEGER, target=TargetScope.LOCAL)
         assert mgr.get_variable_object("x").is_integer

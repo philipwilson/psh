@@ -14,6 +14,7 @@ from ..core import (
     NamerefCycleError,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
+    TargetScope,
     VarAttributes,
     special_builtin_stops_at_first_bad_identifier,
 )
@@ -244,7 +245,7 @@ class ExportBuiltin(Builtin):
                     DeclarationEngine(shell).commit_scalar(
                         key, value, append=append,
                         add_attributes=VarAttributes.EXPORT,
-                        local=False, skip_temp_env=True)
+                        target=TargetScope.DYNAMIC, skip_temp_env=True)
                 else:
                     self._export_existing(key, shell)
             except ReadonlyVariableError as e:
@@ -286,9 +287,8 @@ class ExportBuiltin(Builtin):
         if scope_manager.get_variable_object(target) is not None:
             scope_manager.apply_attribute(target, VarAttributes.EXPORT)
         else:
-            scope_manager.set_variable(
-                target, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
-                local=False)
+            scope_manager.store.assign(
+                target, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET)
 
     def _export_functions(self, names: List[str], shell: 'Shell', *,
                           unexport: bool) -> int:

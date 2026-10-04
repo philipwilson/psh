@@ -52,6 +52,7 @@ import pytest
 
 from psh.core.scope import ScopeManager
 from psh.core.variable_lookup import LookupStatus, VariableLookup
+from psh.core.variable_store import TargetScope
 from psh.shell import Shell
 
 # --- the mutation-surface axis --------------------------------------------
@@ -185,11 +186,11 @@ class TestMissingSingletonNotPoisonable:
         mgr = ScopeManager()
         mgr.push_scope("f")
         try:
-            mgr.create_local("x")  # bare `local x` -> PRESENT_UNSET
+            mgr.store.assign("x", None, target=TargetScope.LOCAL)  # bare `local x` -> PRESENT_UNSET
             first = mgr.lookup("x")
             with pytest.raises(AttributeError):
                 first.value = "POISON"
-            mgr.create_local("y")
+            mgr.store.assign("y", None, target=TargetScope.LOCAL)
             assert mgr.lookup("y").status is LookupStatus.PRESENT_UNSET
             assert mgr.lookup("y").value is None
         finally:
@@ -426,7 +427,7 @@ class TestCompositionCells:
         manager = ScopeManager()
         manager.push_scope("f")
         try:
-            manager.create_local("RANDOM", "5")
+            manager.store.assign("RANDOM", "5", target=TargetScope.LOCAL)
             manager.unset_variable("RANDOM")
             result = manager.lookup("RANDOM")
             assert result.is_set is False
@@ -474,8 +475,8 @@ class TestRepresentationSemantics:
         manager = ScopeManager()
         manager.push_scope("f")
         try:
-            manager.create_local("x")
-            manager.create_local("y")
+            manager.store.assign("x", None, target=TargetScope.LOCAL)
+            manager.store.assign("y", None, target=TargetScope.LOCAL)
             assert manager.lookup("x") == manager.lookup("y")
         finally:
             manager.pop_scope()

@@ -56,7 +56,7 @@ def _render(shell, ast, fmt):
 
     Returns captured stderr, or re-raises whatever escaped.
     """
-    shell.state.scope_manager.set_variable("PSH_AST_FORMAT", fmt)
+    shell.state.scope_manager.store.assign("PSH_AST_FORMAT", fmt)
     err = io.StringIO()
     real, sys.stderr = sys.stderr, err
     try:
@@ -146,7 +146,7 @@ def test_the_environment_variable_route_does_NOT_reach_the_format(
     """
     ast, shell = ast_and_shell
     monkeypatch.setenv("PSH_AST_FORMAT", "bogus")
-    shell.state.scope_manager.set_variable("PSH_AST_FORMAT", "")
+    shell.state.scope_manager.store.assign("PSH_AST_FORMAT", "")
     err = io.StringIO()
     real, sys.stderr = sys.stderr, err
     try:

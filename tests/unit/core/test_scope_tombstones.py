@@ -18,19 +18,20 @@ All behaviors verified against bash 5.2 (probes promoted to the
 """
 
 from psh.core.scope import ScopeManager
+from psh.core.variable_store import TargetScope
 from psh.core.variables import VarAttributes
 
 
 class TestTombstoneVisibility:
     def test_global_unset_hides_from_get_all_variables(self):
         mgr = ScopeManager()
-        mgr.set_variable('X', '1')
+        mgr.store.assign('X', '1')
         mgr.unset_variable('X')
         assert 'X' not in mgr.get_all_variables()
 
     def test_function_unset_of_global_hides_from_get_all_variables(self):
         mgr = ScopeManager()
-        mgr.set_variable('HOME', '/home/user')
+        mgr.store.assign('HOME', '/home/user')
         mgr.push_scope('f')
         mgr.unset_variable('HOME')
         assert 'HOME' not in mgr.get_all_variables()
@@ -39,9 +40,9 @@ class TestTombstoneVisibility:
     def test_unset_local_hides_not_reveals(self):
         """bash: unsetting a local does NOT reveal the outer value."""
         mgr = ScopeManager()
-        mgr.set_variable('g', 'outer')
+        mgr.store.assign('g', 'outer')
         mgr.push_scope('f')
-        mgr.create_local('g', 'inner')
+        mgr.store.assign('g', 'inner', target=TargetScope.LOCAL)
         mgr.unset_variable('g')
         assert 'g' not in mgr.get_all_variables()
         assert mgr.get_variable('g') is None
@@ -51,7 +52,7 @@ class TestTombstoneVisibility:
 
     def test_tombstone_excluded_from_all_variables_with_attributes(self):
         mgr = ScopeManager()
-        mgr.set_variable('Y', '2')
+        mgr.store.assign('Y', '2')
         mgr.push_scope('f')
         mgr.unset_variable('Y')
         names = [v.name for v in mgr.all_variables_with_attributes()]
@@ -60,9 +61,9 @@ class TestTombstoneVisibility:
 
     def test_set_after_unset_visible_again(self):
         mgr = ScopeManager()
-        mgr.set_variable('Z', '1')
+        mgr.store.assign('Z', '1')
         mgr.unset_variable('Z')
-        mgr.set_variable('Z', '2')
+        mgr.store.assign('Z', '2')
         assert mgr.get_all_variables().get('Z') == '2'
 
     def test_unset_attribute_flag_is_the_mechanism(self):
@@ -75,7 +76,7 @@ class TestTombstoneVisibility:
         x=new, not unset)."""
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('v', 'local-value')
+        mgr.store.assign('v', 'local-value', target=TargetScope.LOCAL)
         mgr.unset_variable('v')
         scope_var = mgr.current_scope.variables.get('v')
         assert scope_var is not None
@@ -86,7 +87,7 @@ class TestTombstoneVisibility:
         """Unsetting a global from a function REMOVES the global — no
         tombstone anywhere (bash: a later assignment writes the global)."""
         mgr = ScopeManager()
-        mgr.set_variable('HOME', '/home/user')
+        mgr.store.assign('HOME', '/home/user')
         mgr.push_scope('f')
         mgr.unset_variable('HOME')
         assert 'HOME' not in mgr.current_scope.variables
@@ -100,19 +101,19 @@ class TestBashUnsetSemantics:
     def test_unset_global_then_assign_writes_global(self):
         """P1: x=1; f(){ unset x; x=new; }; f — bash leaves x=new."""
         mgr = ScopeManager()
-        mgr.set_variable('x', '1')
+        mgr.store.assign('x', '1')
         mgr.push_scope('f')
         mgr.unset_variable('x')
-        mgr.set_variable('x', 'new')
+        mgr.store.assign('x', 'new')
         mgr.pop_scope()
         assert mgr.get_variable('x') == 'new'
 
     def test_unset_callers_local_reveals_global(self):
         """P3: unset in g of f's local reveals the global in g."""
         mgr = ScopeManager()
-        mgr.set_variable('x', 'global')
+        mgr.store.assign('x', 'global')
         mgr.push_scope('f')
-        mgr.create_local('x', 'f')
+        mgr.store.assign('x', 'f', target=TargetScope.LOCAL)
         mgr.push_scope('g')
         mgr.unset_variable('x')
         assert mgr.get_variable('x') == 'global'
@@ -125,12 +126,12 @@ class TestBashUnsetSemantics:
         """P4: after g unsets f's local, g's assignment lands on the
         global, visible in f and at top level."""
         mgr = ScopeManager()
-        mgr.set_variable('x', 'global')
+        mgr.store.assign('x', 'global')
         mgr.push_scope('f')
-        mgr.create_local('x', 'f')
+        mgr.store.assign('x', 'f', target=TargetScope.LOCAL)
         mgr.push_scope('g')
         mgr.unset_variable('x')
-        mgr.set_variable('x', 'setbyg')
+        mgr.store.assign('x', 'setbyg')
         mgr.pop_scope()
         assert mgr.get_variable('x') == 'setbyg'
         mgr.pop_scope()
@@ -140,11 +141,11 @@ class TestBashUnsetSemantics:
         """P7: successive unsets from the innermost scope pop the value
         stack one instance at a time."""
         mgr = ScopeManager()
-        mgr.set_variable('x', 'global')
+        mgr.store.assign('x', 'global')
         mgr.push_scope('f')
-        mgr.create_local('x', 'f')
+        mgr.store.assign('x', 'f', target=TargetScope.LOCAL)
         mgr.push_scope('g')
-        mgr.create_local('x', 'g')
+        mgr.store.assign('x', 'g', target=TargetScope.LOCAL)
         mgr.push_scope('h')
         mgr.unset_variable('x')
         assert mgr.get_variable('x') == 'f'
@@ -157,9 +158,9 @@ class TestBashUnsetSemantics:
         """P6: repeated unset of an own-scope local is idempotent — the
         global does not show through."""
         mgr = ScopeManager()
-        mgr.set_variable('x', '1')
+        mgr.store.assign('x', '1')
         mgr.push_scope('f')
-        mgr.create_local('x', '2')
+        mgr.store.assign('x', '2', target=TargetScope.LOCAL)
         mgr.unset_variable('x')
         mgr.unset_variable('x')
         assert mgr.get_variable('x') is None
@@ -170,11 +171,11 @@ class TestBashUnsetSemantics:
         """P21/P22: an assignment in a called function binds to the
         caller's declared-but-unset local, not the global."""
         mgr = ScopeManager()
-        mgr.set_variable('x', 'global')
+        mgr.store.assign('x', 'global')
         mgr.push_scope('f')
-        mgr.create_local('x')  # bare `local x` — declared-unset
+        mgr.store.assign('x', None, target=TargetScope.LOCAL)  # bare `local x` — declared-unset
         mgr.push_scope('g')
-        mgr.set_variable('x', 'setbyg')
+        mgr.store.assign('x', 'setbyg')
         mgr.pop_scope()
         assert mgr.get_variable('x') == 'setbyg'
         mgr.pop_scope()
@@ -184,9 +185,9 @@ class TestBashUnsetSemantics:
         """P37: from a DEEPER scope, unset removes the caller's
         declared-unset cell outright, revealing the global."""
         mgr = ScopeManager()
-        mgr.set_variable('x', 'global')
+        mgr.store.assign('x', 'global')
         mgr.push_scope('f')
-        mgr.create_local('x', 'f')
+        mgr.store.assign('x', 'f', target=TargetScope.LOCAL)
         mgr.unset_variable('x')  # tombstone in f
         mgr.push_scope('g')
         mgr.unset_variable('x')  # removes f's tombstone
@@ -199,7 +200,7 @@ class TestBashUnsetSemantics:
         declared-unset cell (bash shows `declare -- x`)."""
         mgr = ScopeManager()
         mgr.push_scope('f')
-        mgr.create_local('x', '5', attributes=VarAttributes.INTEGER)
+        mgr.store.assign('x', '5', attributes=VarAttributes.INTEGER, target=TargetScope.LOCAL)
         mgr.unset_variable('x')
         var = mgr.get_declared_variable_object('x')
         assert var is not None
@@ -210,9 +211,9 @@ class TestBashUnsetSemantics:
         """P19b: get_declared_variable_object returns the plain tombstone
         so `declare -p x` prints `declare -- x` (bash)."""
         mgr = ScopeManager()
-        mgr.set_variable('x', '1')
+        mgr.store.assign('x', '1')
         mgr.push_scope('f')
-        mgr.create_local('x', '2')
+        mgr.store.assign('x', '2', target=TargetScope.LOCAL)
         mgr.unset_variable('x')
         assert mgr.get_declared_variable_object('x') is not None
         mgr.pop_scope()

@@ -172,7 +172,8 @@
         },
         {
           "id": "1.16",
-          "title": "allexport at the write site"
+          "title": "allexport at the write site",
+          "release": "0.798.0"
         },
         {
           "id": "1.17",
@@ -407,6 +408,31 @@
             "W1-N85"
           ],
           "verification": "r1 BOUNCE, r2 BOUNCE, r3 PASS + 2 bounded confirms at 5746b656 (451 pins red on base)"
+        },
+        {
+          "version": "0.798.0",
+          "date": "2026-09-29",
+          "slots": [
+            "1.16"
+          ],
+          "closes": [
+            "C028",
+            "W1-N18"
+          ],
+          "flips": "9 C028 write-authority-matrix cells",
+          "registers": [
+            "W1-N26 (declared)",
+            "W1-N86 (declared)",
+            "W1-N87",
+            "W1-N88",
+            "W1-N89",
+            "W1-N90",
+            "W1-N91",
+            "W1-N92",
+            "W1-N93",
+            "W1-N94"
+          ],
+          "verification": "r1 BOUNCE (4), r2 BOUNCE (1), r3 BOUNCE (1), r4 PASS at 985119c2 (tmp/program-2026-09/verify/slot-1.16*.md)"
         }
       ]
     },

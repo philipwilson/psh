@@ -154,8 +154,28 @@ class ShellState:
         # process-global (test_construction_purity_f2.py).
         self.locale = LocaleService(self.env, deferred=True)
 
+        # Centralized shell options dictionary — built BEFORE the scope manager,
+        # which holds a reference to it so the variable write door can decide
+        # ``set -a`` without a back-reference to the shell.
+        # Shell options live in a registry-backed, dict-compatible container
+        # (psh/core/option_registry.py is the single source of truth for every
+        # option's default, short flag, $- letter, and category). Only the
+        # values that differ from the registry defaults at construction —
+        # the CLI debug flags and the PSH_STRICT_ERRORS seed — are passed as
+        # overrides; everything else takes its registry default.
+        self.options = ShellOptions(overrides={
+            'debug-ast': debug_ast,
+            'debug-tokens': debug_tokens,
+            'debug-scopes': debug_scopes,
+            'debug-expansion': debug_expansion,
+            'debug-expansion-detail': debug_expansion_detail,
+            'debug-exec': debug_exec,
+            'debug-exec-fork': debug_exec_fork,
+            'strict-errors': self._seed_strict_errors(),
+        })
+
         # Initialize enhanced scope manager for variable scoping with attributes
-        self.scope_manager = ScopeManager()
+        self.scope_manager = ScopeManager(options=self.options)
 
         # getopts continuation cursor (typed). Created BEFORE the
         # variable_changed observer is wired below, because that observer bumps
@@ -177,11 +197,11 @@ class ShellState:
         self.scope_manager.path_changed = lambda: self.command_hash.clear()
 
         # Default prompt variables (set in global scope)
-        self.scope_manager.set_variable('PS1', 'psh$ ')
-        self.scope_manager.set_variable('PS2', '> ')
+        self.scope_manager.store.assign('PS1', 'psh$ ')
+        self.scope_manager.store.assign('PS2', '> ')
 
         # Shell version variable for compatibility
-        self.scope_manager.set_variable('PSH_VERSION', __version__)
+        self.scope_manager.store.assign('PSH_VERSION', __version__)
 
         # Import inherited environment entries as exported shell variables —
         # but ONLY those whose name is a valid shell identifier. An entry with
@@ -201,7 +221,7 @@ class ShellState:
                     and spec.default_attributes & VarAttributes.READONLY):
                 continue
             if is_environ_shell_name(name):
-                self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT, local=False)
+                self.scope_manager.store.assign(name, value, attributes=VarAttributes.EXPORT)
 
         # The opaque inherited-environment base: the entries whose NAME is not a
         # valid shell identifier (``bad-name``, ``a.b``, a non-ASCII name). They
@@ -236,7 +256,7 @@ class ShellState:
         # Ensure PWD is set to current working directory if not already in
         # environment (the observer adds the env entry).
         if 'PWD' not in self.env:
-            self.scope_manager.set_variable('PWD', os.getcwd(), attributes=VarAttributes.EXPORT, local=False)
+            self.scope_manager.store.assign('PWD', os.getcwd(), attributes=VarAttributes.EXPORT)
 
         # Seed IFS to the default <space><tab><newline> as a REAL variable so
         # ``$IFS`` expands, ``declare -p IFS`` prints it, and the save/restore
@@ -247,30 +267,12 @@ class ShellState:
         # replacing the value (declare -- otherwise). Word splitting still uses
         # the same default when IFS is UNSET (get_variable's fallback arg), so
         # ``unset IFS`` keeps bash's whitespace splitting.
-        self.scope_manager.set_variable('IFS', ' \t\n')
+        self.scope_manager.store.assign('IFS', ' \t\n')
 
         # Positional parameters and script info
         self.positional_params = args if args else []
         self.script_name = script_name or "psh"
         self.is_script_mode = script_name is not None and script_name != "psh"
-
-        # Centralized shell options dictionary
-        # Shell options live in a registry-backed, dict-compatible container
-        # (psh/core/option_registry.py is the single source of truth for every
-        # option's default, short flag, $- letter, and category). Only the
-        # values that differ from the registry defaults at construction —
-        # the CLI debug flags and the PSH_STRICT_ERRORS seed — are passed as
-        # overrides; everything else takes its registry default.
-        self.options = ShellOptions(overrides={
-            'debug-ast': debug_ast,
-            'debug-tokens': debug_tokens,
-            'debug-scopes': debug_scopes,
-            'debug-expansion': debug_expansion,
-            'debug-expansion-detail': debug_expansion_detail,
-            'debug-exec': debug_exec,
-            'debug-exec-fork': debug_exec_fork,
-            'strict-errors': self._seed_strict_errors(),
-        })
 
         # Enable debug mode on scope manager if debug-scopes is set
         if self.options['debug-scopes']:
@@ -331,8 +333,7 @@ class ShellState:
             self.options['posix'] = True
         if (self.options.get('posix')
                 and self.scope_manager.get_variable('POSIXLY_CORRECT') is None):
-            self.scope_manager.set_variable(
-                'POSIXLY_CORRECT', 'y', local=False)
+            self.scope_manager.store.assign('POSIXLY_CORRECT', 'y')
         self.options.on_change = self._refresh_option_reflection_env
 
         # Function call stack
@@ -382,8 +383,8 @@ class ShellState:
         for _pid_name, _pid_value in (('UID', os.getuid()),
                                       ('EUID', os.geteuid()),
                                       ('PPID', self.initial_ppid)):
-            self.scope_manager.set_variable(
-                _pid_name, str(_pid_value), local=False,
+            self.scope_manager.store.assign(
+                _pid_name, str(_pid_value),
                 attributes=VarAttributes.READONLY | VarAttributes.INTEGER)
 
         # Terminal capabilities — one cohesive object (is_terminal /
@@ -392,14 +393,14 @@ class ShellState:
         self.terminal = TerminalState()
 
         # PS4 prompt for xtrace
-        self.scope_manager.set_variable('PS4', '+ ')
+        self.scope_manager.store.assign('PS4', '+ ')
 
         # Initialize getopts variables
-        self.scope_manager.set_variable('OPTIND', '1')
-        self.scope_manager.set_variable('OPTERR', '1')
+        self.scope_manager.store.assign('OPTIND', '1')
+        self.scope_manager.store.assign('OPTERR', '1')
 
         # PSH-specific variables
-        self.scope_manager.set_variable('PSH_AST_FORMAT', 'tree')  # Default AST format
+        self.scope_manager.store.assign('PSH_AST_FORMAT', 'tree')  # Default AST format
 
         # Platform identity variables (bash: HOSTNAME/OSTYPE/MACHTYPE/HOSTTYPE)
         # are ORDINARY shell variables initialized at startup — freely
@@ -418,7 +419,7 @@ class ShellState:
                                 ('OSTYPE', _ostype),
                                 ('MACHTYPE', f"{_machine}-{_vendor}-{_ostype}")):
             if self.scope_manager.get_variable_object(_pname) is None:
-                self.scope_manager.set_variable(_pname, _pvalue)
+                self.scope_manager.store.assign(_pname, _pvalue)
 
         # Trap handlers: signal -> command string
         # Maps signal names (e.g., 'INT', 'TERM', 'EXIT') to trap command strings
@@ -633,10 +634,20 @@ class ShellState:
         self._env_base = dict(parent._env_base)
         self._env_overlay = dict(parent._env_overlay)
         self.locale = parent.locale
+        # Shell options (set -e, pipefail, debug flags, ...) — built BEFORE the
+        # scope manager clone, which holds the child's table for its write
+        # door. The on_change observer is rewired to THIS state (the fresh
+        # container's is None, so the update itself doesn't fire it); the
+        # copied env already holds the parent's current SHELLOPTS/BASHOPTS
+        # entries.
+        self.options = ShellOptions()
+        self.options.update(parent.options)
+        self.options.on_change = self._refresh_option_reflection_env
+
         # clone() copies every scope (whole Variable objects, arrays deep) and
-        # the computed-special state WITHOUT any set_variable call, so the
+        # the computed-special state WITHOUT any write-door call, so the
         # child keyset matches the parent's exactly.
-        self.scope_manager = parent.scope_manager.clone()
+        self.scope_manager = parent.scope_manager.clone(options=self.options)
 
         # Command hash table (bash: `hash ls; (hash)` lists it in the subshell)
         # + PATH observer — the child's cloned scope manager gets its own
@@ -654,14 +665,6 @@ class ShellState:
         # getopts cursor: a clustered-option walk (-ab) spans into children
         # (bash: set -- -ab; getopts ab o; $(getopts ab o; echo $o) sees b).
         self.getopts_state = parent.getopts_state.copy()
-
-        # Shell options (set -e, pipefail, debug flags, ...). The on_change
-        # observer is rewired to THIS state (the fresh container's is None, so
-        # the update itself doesn't fire it); the copied env already holds the
-        # parent's current SHELLOPTS/BASHOPTS entries.
-        self.options = ShellOptions()
-        self.options.update(parent.options)
-        self.options.on_change = self._refresh_option_reflection_env
 
         # RC policy is per-invocation (children skip rc files by default),
         # never inherited.
@@ -1062,20 +1065,15 @@ class ShellState:
         array variable resolves to the whole array — which the scope manager
         stores as-is.
 
-        Under ``set -a`` (allexport) the variable gains the EXPORT
-        attribute. Either way the scope manager's variable_changed
-        observer (:meth:`_sync_exported_variable`) keeps ``self.env`` —
-        the live environment; os.environ is read once at startup and
-        never written — in sync with the variable's export attribute.
-
-        allexport does NOT auto-export a computed dynamic special (bash:
-        ``set -a; RANDOM=5`` seeds RANDOM but leaves it unexported); only an
-        explicit ``export``/``readonly`` marks a special exported.
+        A plain (dynamic-scoping) write through the ONE write door,
+        :meth:`VariableStore.assign` — which decides ``set -a`` (allexport)
+        for every spelling, so this method carries no policy of its own. The
+        scope manager's variable_changed observer
+        (:meth:`_sync_exported_variable`) then keeps ``self.env`` — the live
+        environment; os.environ is read once at startup and never written —
+        in sync with the variable's export attribute.
         """
-        allexport = (self.options.get('allexport', False)
-                     and not self.scope_manager.is_dynamic_special(name))
-        attributes = VarAttributes.EXPORT if allexport else VarAttributes.NONE
-        self.scope_manager.set_variable(name, value, attributes=attributes, local=False)
+        self.scope_manager.store.assign(name, value)
 
     def export_variable(self, name: str, value: str):
         """Set a variable with the EXPORT attribute (the observer adds the
@@ -1086,8 +1084,8 @@ class ShellState:
         global X (which survives the function return) rather than the discarded
         temp layer — bash. (``cd``/``pushd``'s PWD/OLDPWD exports likewise want
         the real variable, never a temp shadow.)"""
-        self.scope_manager.set_variable(name, value, attributes=VarAttributes.EXPORT,
-                                        local=False, skip_temp_env=True)
+        self.scope_manager.store.assign(name, value, attributes=VarAttributes.EXPORT,
+                                        skip_temp_env=True)
 
     def _materialize_env_name(self, name: str) -> None:
         """Set ``self.env[name]`` from the ONE authoritative composition:
@@ -1307,7 +1305,7 @@ class ShellState:
                         self.options['emacs'] = (name == 'emacs')
                     elif name == 'ignoreeof':
                         # `set -o ignoreeof` binds IGNOREEOF=10; mirror it.
-                        self.scope_manager.set_variable('IGNOREEOF', '10')
+                        self.scope_manager.store.assign('IGNOREEOF', '10')
                         self.options['ignoreeof'] = True
                     else:
                         self.options[name] = True
@@ -1367,8 +1365,7 @@ class ShellState:
         # never produced before this coupling existed.
         try:
             if posix_on and var is None:
-                self.scope_manager.set_variable(
-                    'POSIXLY_CORRECT', 'y', local=False)
+                self.scope_manager.store.assign('POSIXLY_CORRECT', 'y')
             elif not posix_on and var is not None:
                 self.scope_manager.unset_variable('POSIXLY_CORRECT')
         except ReadonlyVariableError:

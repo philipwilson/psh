@@ -13,6 +13,7 @@ from typing import (
 
 from .exceptions import NamerefCycleError, ReadonlyVariableError
 from .locale_service import active_locale
+from .option_registry import ShellOptions
 from .special_registry import (
     OPTION_REFLECTION_SPECIALS,
     SpecialContext,
@@ -98,15 +99,22 @@ class VariableScope:
 class ScopeManager:
     """Hierarchical scope manager with variable attributes support."""
 
-    def __init__(self):
+    def __init__(self, options: Optional[ShellOptions] = None):
         self.global_scope = VariableScope(name='global')
         self.scope_stack: List[VariableScope] = [self.global_scope]
         self._debug = False
         self._shell = None  # Reference to shell for arithmetic evaluation
+        # The shell's option table, handed in by the owning ShellState (and by
+        # ``clone_for_child`` for a child) so the write door can read
+        # ``allexport`` without a back-reference. A manager built bare (tests)
+        # gets a registry-default table — every option off.
+        self.options: ShellOptions = options if options is not None else ShellOptions()
         # The authoritative variable-mutation service (core-state Phase 2). It
         # shares this manager's scope stack and observers; every child manager
         # from ``clone()`` builds a fresh store, so writes never cross the child
-        # boundary. See psh/core/variable_store.py.
+        # boundary. Its ``assign`` is THE write door: the only caller of this
+        # manager's ``_set_variable`` / ``_create_local`` primitives. See
+        # psh/core/variable_store.py.
         self.store = VariableStore(self)
 
         # Observer fired whenever the EFFECTIVE binding of PATH is rebound —
@@ -146,8 +154,11 @@ class ScopeManager:
         # CommandAssignments.expand_prefix / commit_prefix / restore / commit.
         self.command_temp_env: List[Dict[str, Variable]] = []
 
-    def clone(self) -> 'ScopeManager':
+    def clone(self, *, options: ShellOptions) -> 'ScopeManager':
         """Build an independent ScopeManager for a child shell (clone_for_child).
+
+        ``options`` is the CHILD's option table (already copied from the
+        parent's), so the child's write door reads the child's ``allexport``.
 
         Copies every scope via ``VariableScope.copy`` (whole ``Variable``
         objects with deep-copied array values), the debug flag, and the
@@ -158,12 +169,12 @@ class ScopeManager:
         re-wires the observers and ``Shell.set_shell`` installs the
         back-reference.
 
-        Crucially, NO variable is created through ``set_variable``, so the
+        Crucially, NO variable is created through the write door, so the
         child's variable keyset is EXACTLY the parent's — no seeded defaults
         and no ``os.environ`` re-import can resurrect a name the parent unset
         (the C1 resurrection defect).
         """
-        new = ScopeManager()
+        new = ScopeManager(options=options)
         new.global_scope = self.global_scope.copy()
         new.scope_stack = [new.global_scope]
         for scope in self.scope_stack[1:]:
@@ -642,16 +653,23 @@ class ScopeManager:
                 return scope.variables[name]
         return None
 
-    def set_variable(self, name: str, value: Any,
-                     attributes: VarAttributes = VarAttributes.NONE,
-                     local: bool = False, global_scope: bool = False,
-                     skip_temp_env: bool = False):
-        """Set variable with attributes in appropriate scope.
+    def _set_variable(self, name: str, value: Any,
+                      attributes: VarAttributes = VarAttributes.NONE,
+                      local: bool = False, global_scope: bool = False,
+                      skip_temp_env: bool = False, array_export: bool = False):
+        """Write primitive behind the door — called ONLY by
+        :meth:`VariableStore.assign`. Every other caller goes
+        through ``scope_manager.store.assign(...)``, which decides ``set -a``
+        and maps a :class:`TargetScope` onto the flags below.
 
         Args:
             name: Variable name
             value: Variable value
             attributes: Variable attributes to apply
+            array_export: the door's verdict on whether a write through a
+                   GLOBAL nameref to an array ELEMENT marks the ARRAY exported
+                   (an explicit ``-x``, or allexport on a PLAIN assignment —
+                   not allexport on a declaration); see VariableStore.assign
             local: If True, set in current scope. If False and in function,
                    check if variable exists in current scope first
             global_scope: If True (``declare -g``), force the GLOBAL scope
@@ -672,6 +690,7 @@ class ScopeManager:
         # defining the nameref itself (NAMEREF in the new attributes), where the
         # value IS the target name and must be stored on `name` directly.
         if not (attributes & VarAttributes.NAMEREF):
+            written = name
             name = self.resolve_nameref_name(name)
             # A nameref whose target is an array element (e.g. arr[1]) resolves
             # to a subscripted name; route that through the array-element setter
@@ -680,6 +699,17 @@ class ScopeManager:
             if ('[' in name and name.endswith(']') and self._shell is not None
                     and not isinstance(value, (IndexedArray, AssociativeArray))):
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
+                # bash's nameref path rebinds the ARRAY, so the EXPORT of a plain
+                # ``set -a; declare -n r='a[1]'; r=5`` or an explicit ``declare
+                # -x r=5`` lands on the array (``declare -ax a``) — but ONLY when
+                # the name WRITTEN is a GLOBAL nameref cell: a ``local -n``, an
+                # in-function ``declare -n``, or a local nameref chained to a
+                # global one never marks the array, wherever the write or the
+                # array lives; neither does a declaration whose EXPORT came only
+                # from allexport (``declare r=5``), nor a direct ``a[1]=5``.
+                if (array_export
+                        and self._innermost_scope_with(written) is self.global_scope):
+                    self.apply_attribute(name[:name.index('[')], VarAttributes.EXPORT)
                 return
 
         # Write-through to a command temp-env binding: a PLAIN assignment while a
@@ -857,11 +887,23 @@ class ScopeManager:
             return None          # nearest instance lacks provenance
         return None
 
-    def create_local(self, name: str, value: Optional[Any] = None,
-                     attributes: VarAttributes = VarAttributes.NONE):
-        """Create a local variable in the current scope.
+    def _create_local(self, name: str, value: Optional[Any] = None,
+                      attributes: VarAttributes = VarAttributes.NONE, *,
+                      remove_attributes: VarAttributes = VarAttributes.NONE):
+        """``local`` write primitive behind the door — called ONLY by
+        :meth:`VariableStore.assign` with ``TargetScope.LOCAL``.
 
-        This is what the 'local' builtin uses.
+        ``remove_attributes`` (``local +x``) are stripped from what the new
+        local would INHERIT — a redeclared cell's attributes, or the EXPORT of
+        the variable a fresh local shadows — before ``attributes`` (which may
+        carry the door's allexport EXPORT) are merged: ``export G=g; f(){ local
+        +x G=z; }`` gives an unexported shadow, while under ``set -a`` the same
+        line is exported (bash).
+
+        ``value=None`` plants a declared-but-unset local (a tombstone that keeps
+        its attributes); a value-less redeclare over such a tombstone MERGES the
+        new attributes into it in place (bash: ``local -u x; local -x x`` shows
+        ``declare -xu x``; ``local -r x; local -x x`` keeps readonly).
         """
         if not self.is_in_function():
             raise RuntimeError("local: can only be used in a function")
@@ -902,6 +944,12 @@ class ScopeManager:
         # later ``local x=v`` starts fresh.
         existing_local = self.current_scope.variables.get(name)
         redeclare = existing_local is not None and not existing_local.is_unset
+        # A declared-but-unset local (``local -u x``) being redeclared: its
+        # attributes MERGE with the new ones — with a value the cell is
+        # replaced below but keeps ``-u`` (bash ``local -u x; local x=hi`` ->
+        # ``declare -u x="HI"``); without one the tombstone stays and merges in
+        # place (``local -u x; local -x x`` -> ``declare -xu x``).
+        tombstone_redeclare = existing_local is not None and existing_local.is_unset
         # A DECLARED-but-unset readonly local (``local -r v`` — a tombstone
         # that KEEPS its attributes) also rejects a VALUE redeclare: bash
         # ``local -r v; local v=2`` prints ``local: v: readonly variable``,
@@ -930,14 +978,19 @@ class ScopeManager:
             # like any prefix assignment.
             if value is not None and existing_local.is_readonly:
                 raise ReadonlyVariableError(name)
-            attributes = existing_local.attributes | attributes
+            attributes = (existing_local.attributes & ~remove_attributes) | attributes
+        elif tombstone_redeclare:
+            assert existing_local is not None  # narrow for type-checker
+            attributes |= (existing_local.attributes & ~VarAttributes.UNSET
+                           & ~remove_attributes)
         else:
             # New local: inherit ONLY the EXPORT attribute of the variable it
             # shadows — probe: ``declare -xi N=5; f() { local N; declare -p N;
             # }; f`` prints ``declare -x N`` (no -i). The exported local is
             # what children see while the function runs.
             shadowed = self.get_variable_object(name)
-            if shadowed is not None and shadowed.is_exported:
+            if (shadowed is not None and shadowed.is_exported
+                    and not (remove_attributes & VarAttributes.EXPORT)):
                 attributes |= VarAttributes.EXPORT
 
         if value is not None:
@@ -955,6 +1008,16 @@ class ScopeManager:
             existing_local.attributes = attributes
             self._debug_print(f"Re-declaring local (attrs only): {name}")
             self._notify_variable_changed(name)
+        elif tombstone_redeclare:
+            # Value-less redeclare over a tombstone (``local -u x; local -x
+            # x``): keep it unset, attributes already merged above. The readonly
+            # lock refused any locked attribute; a plain EXPORT/READONLY merge
+            # is allowed (bash ``local -r x; local -x x`` -> ``declare -rx x``).
+            # No observer call: still unset, so an outer exported entry stays
+            # visible exactly as for a fresh tombstone.
+            assert existing_local is not None  # narrow for type-checker
+            existing_local.attributes = attributes | VarAttributes.UNSET
+            self._debug_print(f"Re-declaring unset local (attrs only): {name}")
         elif (source := self._tempvar_inherit_source(name)) is not None:
             # A value-less ``local x`` INHERITS the value (and, via the
             # shadowed-EXPORT rule above, the export) of a temp-env-provenance
@@ -1039,8 +1102,11 @@ class ScopeManager:
             if var.is_readonly:
                 raise ReadonlyVariableError(name)
             if scope is self.current_scope and scope is not self.global_scope:
-                if var.is_unset:
+                if var.is_unset and var.attributes == VarAttributes.UNSET:
                     return  # already local-and-unset: idempotent
+                # A DECLARED-but-unset local (``local -u x``) loses its
+                # attributes here too: bash ``local -u x; unset x; local x=v``
+                # shows ``declare -- x="v"``.
                 scope.variables[name] = Variable(
                     name=name, value="", attributes=VarAttributes.UNSET)
                 self._debug_print(
@@ -1170,6 +1236,16 @@ class ScopeManager:
     def is_in_function(self) -> bool:
         """Check if we're currently in a function scope."""
         return len(self.scope_stack) > 1
+
+    def has_function_scope(self) -> bool:
+        """True when a FUNCTION's own scope is on the stack.
+
+        The write door uses this for ``TargetScope.DEFAULT`` (a bare ``declare``
+        inside a function is a local). A command-prefix temp-env scope alone
+        (``X=1 f`` pushes one BELOW the function's scope; a staging scope is
+        pushed while a prefix is still being resolved) is not a function.
+        """
+        return any(not scope.is_temp_env for scope in self.scope_stack[1:])
 
     def iter_effective_variables(self) -> Iterator[Tuple[str, Variable]]:
         """Yield ``(name, Variable)`` for the innermost visible instance of
@@ -1488,9 +1564,9 @@ class ScopeManager:
         if promoting and not global_scope and self.command_temp_env:
             tv = self._command_temp_env_lookup(name)
             if tv is not None:
-                self.set_variable(name, tv.value,
-                                  attributes=tv.attributes | attributes,
-                                  local=False, skip_temp_env=True)
+                self._set_variable(name, tv.value,
+                                   attributes=tv.attributes | attributes,
+                                   local=False, skip_temp_env=True)
                 return
         var = self._find_variable_for_mutation(name, global_only=global_scope)
         if var:
