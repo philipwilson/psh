@@ -157,9 +157,11 @@ class VariableStore:
           value-less declaration (``declare +x v``, ``declare +x -i n``) is
           never exported, while ``declare +x v=1`` / ``local +x v=1`` ARE
           (bash removes the flag, then the assignment re-exports);
-        - a write through a nameref to an array ELEMENT marks the ARRAY
+        - a write through a GLOBAL nameref to an array ELEMENT marks the ARRAY
           exported (``declare -n r='a[1]'; r=5`` → ``declare -ax a``), where a
           direct ``a[1]=5`` does not — bash's nameref path rebinds the array;
+          a LOCAL nameref (``local -n``, an in-function ``declare -n``) never
+          marks it, wherever the write happens;
         - a whole-array write never is (bash does not export arrays), nor is a
           dynamic special (``set -a; RANDOM=5`` seeds RANDOM unexported);
         - an attribute-only change to an EXISTING variable never reaches this

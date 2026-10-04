@@ -988,6 +988,63 @@ class TestAllexportNamerefElementWrite:
             "set -a; a=(0 1); declare -n r='a[1]'; r=5; set +a; a[0]=1; declare -p a",
             tmp_path=tmp_path)
 
+    # -- the boundary (verifier round 2): only a GLOBAL nameref marks the array -
+
+    def test_global_nameref_written_inside_a_function_marks(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -n r='a[0]'; f(){ r=1; }; a=(); f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_global_nameref_written_in_a_subshell_marks(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -n r='a[0]'; ( r=1; declare -p a )", tmp_path=tmp_path)
+
+    def test_declare_g_nameref_in_function_marks(self, tmp_path):
+        _parity_in_modes(
+            "set -a; f(){ declare -g -n r='a[0]'; r=1; }; a=(); f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_global_nameref_marks_the_local_array_it_resolves_to(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -n r='a[0]'; f(){ local -a a=(9); r=1; declare -p a; }; f",
+            tmp_path=tmp_path)
+
+    def test_in_function_declare_n_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; f(){ declare -n r='a[0]'; r=1; declare -p a; }; a=(); f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_local_n_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(); f(){ local -n r='a[0]'; r=1; declare -p a r; }; f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_local_n_to_a_local_array_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; f(){ local -a la; local -n r='la[0]'; r=2; declare -p la; }; f",
+            tmp_path=tmp_path)
+
+    def test_local_nameref_chained_to_a_global_nameref_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(); declare -n r='a[0]'; f(){ local -n s=r; s=1; }; f; declare -p a; "
+            "g(){ declare -n t=r; t=2; }; g; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_local_n_to_assoc_element_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; declare -A m; f(){ local -n r='m[k]'; r=v; }; f; declare -p m",
+            tmp_path=tmp_path)
+
+    def test_local_n_written_from_a_nested_function_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; f(){ local -n r='a[0]'; g; }; g(){ r=1; }; a=(); f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_local_n_written_through_eval_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(); f(){ local -n r='a[0]'; eval 'r=1'; }; f; declare -p a",
+            tmp_path=tmp_path)
+
 
 class TestAllexportDeclarationDefaultUnderPrefix:
     """A top-level command-prefix scope is NOT a function scope: ``declare``'s

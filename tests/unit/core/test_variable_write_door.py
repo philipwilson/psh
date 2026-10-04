@@ -382,3 +382,21 @@ def test_nameref_element_write_without_allexport_leaves_array_unexported(sh):
     sh.run_command("a=(0 1); declare -n r='a[1]'")
     _store(sh).assign('r', '5')
     assert not _exported(sh, 'a')
+
+
+def test_local_nameref_element_write_does_not_mark_the_array(sh):
+    sh.run_command("a=(0 1)")
+    _allexport(sh)
+    sm = sh.state.scope_manager
+    sm.push_scope('f')
+    _store(sh).assign('r', 'a[1]', attributes=A.NAMEREF, target=TargetScope.LOCAL)
+    _store(sh).assign('r', '5')
+    assert not _exported(sh, 'a') and sm.get_variable_object('a').value.get(1) == '5'
+
+
+def test_global_nameref_element_write_from_inside_a_function_marks_the_array(sh):
+    sh.run_command("a=(0 1); declare -n r='a[1]'")
+    _allexport(sh)
+    sh.state.scope_manager.push_scope('f')
+    _store(sh).assign('r', '5')
+    assert _exported(sh, 'a')

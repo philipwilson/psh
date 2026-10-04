@@ -686,6 +686,7 @@ class ScopeManager:
         # defining the nameref itself (NAMEREF in the new attributes), where the
         # value IS the target name and must be stored on `name` directly.
         if not (attributes & VarAttributes.NAMEREF):
+            written = name
             name = self.resolve_nameref_name(name)
             # A nameref whose target is an array element (e.g. arr[1]) resolves
             # to a subscripted name; route that through the array-element setter
@@ -696,8 +697,13 @@ class ScopeManager:
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
                 # bash's nameref path rebinds the ARRAY, so an EXPORT the door
                 # attached (``set -a; declare -n r='a[1]'; r=5``) lands on the
-                # array (``declare -ax a``) — a direct ``a[1]=5`` never does.
-                if attributes & VarAttributes.EXPORT:
+                # array (``declare -ax a``) — but ONLY when the name WRITTEN is
+                # a GLOBAL nameref cell: a ``local -n``, an in-function
+                # ``declare -n``, or a local nameref chained to a global one
+                # never marks the array, wherever the write or the array lives.
+                # A direct ``a[1]=5`` never does either.
+                if (attributes & VarAttributes.EXPORT
+                        and self._innermost_scope_with(written) is self.global_scope):
                     self.apply_attribute(name[:name.index('[')], VarAttributes.EXPORT)
                 return
 

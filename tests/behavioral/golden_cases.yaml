@@ -12552,3 +12552,10 @@
   stdout: "declare -- v\ndeclare -- n=\"2+3\"\ndeclare -x w=\"1\"\n"
   stderr: ""
   exit_code: 0
+
+- name: c028_local_nameref_element_write_does_not_mark_array
+  description: "C028 boundary: only a GLOBAL nameref marks the array -ax; local -n / in-function declare -n never do"
+  command: "set -a; a=(); f(){ local -n r='a[0]'; r=1; }; f; declare -p a; g(){ declare -n s='a[1]'; s=2; }; g; declare -p a; declare -n t='a[2]'; h(){ t=3; }; h; declare -p a"
+  stdout: "declare -a a=([0]=\"1\")\ndeclare -a a=([0]=\"1\" [1]=\"2\")\ndeclare -ax a=([0]=\"1\" [1]=\"2\" [2]=\"3\")\n"
+  stderr: ""
+  exit_code: 0
