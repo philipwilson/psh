@@ -400,3 +400,18 @@ def test_global_nameref_element_write_from_inside_a_function_marks_the_array(sh)
     sh.state.scope_manager.push_scope('f')
     _store(sh).assign('r', '5')
     assert _exported(sh, 'a')
+
+
+def test_declaration_through_global_nameref_under_allexport_does_not_mark_the_array(sh):
+    sh.run_command("a=(0 1); declare -n r='a[1]'")
+    _allexport(sh)
+    _store(sh).assign('r', '5', target=TargetScope.DEFAULT)
+    assert not _exported(sh, 'a')
+    _store(sh).assign('r', '6', target=TargetScope.GLOBAL)
+    assert not _exported(sh, 'a')
+
+
+def test_explicit_export_through_global_nameref_marks_the_array(sh):
+    sh.run_command("a=(0 1); declare -n r='a[1]'")
+    _store(sh).assign('r', '5', attributes=A.EXPORT, target=TargetScope.DEFAULT)
+    assert _exported(sh, 'a')

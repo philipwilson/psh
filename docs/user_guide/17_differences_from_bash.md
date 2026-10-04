@@ -482,9 +482,10 @@ dynamic specials such as `RANDOM`, and attribute-only changes to an existing
 variable never are. `export -n NAME=v` ends unexported and `declare +x NAME=v`
 / `local +x NAME=v` end exported, matching bash's ordering (the flag is removed,
 then the assignment re-exports), while a value-less `declare +x NAME` is never
-exported. One bash quirk is matched too: a write through a *global* nameref to an
-array *element* under `set -a` marks the array itself exported (`declare -ax`),
-where a direct `a[1]=v` does not and a `local -n` nameref never does.
+exported. One bash quirk is matched too: a plain assignment through a *global*
+nameref to an array *element* under `set -a` (or an explicit `declare -x` through
+it) marks the array itself exported (`declare -ax`), where a direct `a[1]=v`, a
+`declare r=v` under `set -a`, or a `local -n` nameref never does.
 
 Two deliberate differences remain:
 

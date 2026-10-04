@@ -267,6 +267,12 @@ _GREEN_VALUE_CELLS: Tuple[Cell, ...] = (
     Cell("nameref", "flags", "allexport-global-nameref-written-in-function-marks-array",
          "set -a; declare -n r='a[0]'; f(){ r=1; }; a=(); f; declare -p a",
          'declare -ax a=([0]="1")\n'),
+    Cell("declare", "flags", "allexport-declare-through-global-nameref-does-not-mark-array",
+         "set -a; a=(); declare -n r='a[0]'; declare r=5; declare -p a",
+         'declare -a a=([0]="5")\n'),
+    Cell("declare", "flags", "explicit-declare-x-through-global-nameref-marks-array",
+         "a=(); declare -n r='a[0]'; declare -x r=5; declare -p a",
+         'declare -ax a=([0]="5")\n'),
     # --- unset of a declared-unset local strips attributes (verifier r1 b2) ---
     Cell("unset", "flags", "unset-declared-tombstone-strips-attributes",
          'f(){ local -u x; unset x; declare -p x; }; f', 'declare -- x\n'),

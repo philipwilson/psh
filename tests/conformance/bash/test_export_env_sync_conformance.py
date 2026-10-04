@@ -1045,6 +1045,29 @@ class TestAllexportNamerefElementWrite:
             "set -a; a=(); f(){ local -n r='a[0]'; eval 'r=1'; }; f; declare -p a",
             tmp_path=tmp_path)
 
+    # -- the second boundary (verifier round 3): a DECLARATION's allexport does
+    # not mark the array; a plain assignment's does; an explicit -x always does.
+
+    def test_declare_through_global_nameref_under_allexport_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(); declare -n r='a[0]'; declare r=5; declare -p a; typeset r=6; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_declare_g_through_global_nameref_under_allexport_does_not_mark(self, tmp_path):
+        _parity_in_modes(
+            "set -a; a=(); declare -n r='a[0]'; declare -g r=5; f(){ declare -g r=6; }; f; declare -p a",
+            tmp_path=tmp_path)
+
+    def test_explicit_declare_x_through_global_nameref_marks(self, tmp_path):
+        _parity_in_modes(
+            "a=(); declare -n r='a[0]'; declare -x r=5; declare -p a; b=(); declare -n s='b[0]'; declare -gx s=1; declare -p b",
+            tmp_path=tmp_path)
+
+    def test_plain_then_declare_through_global_nameref(self, tmp_path):
+        _parity_in_modes(
+            "a=(); declare -n r='a[0]'; declare r=5; declare -p a; set -a; r=6; declare -p a",
+            tmp_path=tmp_path)
+
 
 class TestAllexportDeclarationDefaultUnderPrefix:
     """A top-level command-prefix scope is NOT a function scope: ``declare``'s

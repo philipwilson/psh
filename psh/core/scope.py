@@ -656,7 +656,7 @@ class ScopeManager:
     def _set_variable(self, name: str, value: Any,
                       attributes: VarAttributes = VarAttributes.NONE,
                       local: bool = False, global_scope: bool = False,
-                      skip_temp_env: bool = False):
+                      skip_temp_env: bool = False, array_export: bool = False):
         """Write primitive behind the door — called ONLY by
         :meth:`VariableStore.assign`. Every other caller goes
         through ``scope_manager.store.assign(...)``, which decides ``set -a``
@@ -666,6 +666,10 @@ class ScopeManager:
             name: Variable name
             value: Variable value
             attributes: Variable attributes to apply
+            array_export: the door's verdict on whether a write through a
+                   GLOBAL nameref to an array ELEMENT marks the ARRAY exported
+                   (an explicit ``-x``, or allexport on a PLAIN assignment —
+                   not allexport on a declaration); see VariableStore.assign
             local: If True, set in current scope. If False and in function,
                    check if variable exists in current scope first
             global_scope: If True (``declare -g``), force the GLOBAL scope
@@ -695,14 +699,15 @@ class ScopeManager:
             if ('[' in name and name.endswith(']') and self._shell is not None
                     and not isinstance(value, (IndexedArray, AssociativeArray))):
                 self._shell.expansion_manager.set_var_or_array_element(name, value)
-                # bash's nameref path rebinds the ARRAY, so an EXPORT the door
-                # attached (``set -a; declare -n r='a[1]'; r=5``) lands on the
-                # array (``declare -ax a``) — but ONLY when the name WRITTEN is
-                # a GLOBAL nameref cell: a ``local -n``, an in-function
-                # ``declare -n``, or a local nameref chained to a global one
-                # never marks the array, wherever the write or the array lives.
-                # A direct ``a[1]=5`` never does either.
-                if (attributes & VarAttributes.EXPORT
+                # bash's nameref path rebinds the ARRAY, so the EXPORT of a plain
+                # ``set -a; declare -n r='a[1]'; r=5`` or an explicit ``declare
+                # -x r=5`` lands on the array (``declare -ax a``) — but ONLY when
+                # the name WRITTEN is a GLOBAL nameref cell: a ``local -n``, an
+                # in-function ``declare -n``, or a local nameref chained to a
+                # global one never marks the array, wherever the write or the
+                # array lives; neither does a declaration whose EXPORT came only
+                # from allexport (``declare r=5``), nor a direct ``a[1]=5``.
+                if (array_export
                         and self._innermost_scope_with(written) is self.global_scope):
                     self.apply_attribute(name[:name.index('[')], VarAttributes.EXPORT)
                 return

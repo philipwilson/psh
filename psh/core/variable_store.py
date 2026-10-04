@@ -122,8 +122,16 @@ class VariableStore:
         :class:`ReadonlyVariableError` (state unchanged) for a readonly target
         and :class:`NamerefCycleError` for a cyclic nameref.
         """
-        attributes |= self._allexport_attributes(name, value, attributes, target,
-                                                 remove_attributes)
+        added = self._allexport_attributes(name, value, attributes, target,
+                                           remove_attributes)
+        # bash marks an ARRAY exported for a write through a global nameref to
+        # one of its elements only when the EXPORT is explicit (``declare -x
+        # r=5``) or when a PLAIN assignment runs under ``set -a`` (``r=5``); a
+        # declaration under ``set -a`` (``declare r=5``, ``declare -g r=5``)
+        # leaves the array alone. The primitive gets that decision, not the bit.
+        array_export = bool(attributes & VarAttributes.EXPORT) or (
+            bool(added & VarAttributes.EXPORT) and target is TargetScope.DYNAMIC)
+        attributes |= added
         if target is TargetScope.LOCAL:
             self._sm._create_local(name, value, attributes,
                                    remove_attributes=remove_attributes)
@@ -132,7 +140,7 @@ class VariableStore:
             name, value, attributes=attributes,
             local=(target is TargetScope.DEFAULT and self._sm.has_function_scope()),
             global_scope=(target is TargetScope.GLOBAL),
-            skip_temp_env=skip_temp_env)
+            skip_temp_env=skip_temp_env, array_export=array_export)
 
     def _allexport_attributes(self, name: str, value: object,
                               attributes: VarAttributes,
@@ -157,11 +165,13 @@ class VariableStore:
           value-less declaration (``declare +x v``, ``declare +x -i n``) is
           never exported, while ``declare +x v=1`` / ``local +x v=1`` ARE
           (bash removes the flag, then the assignment re-exports);
-        - a write through a GLOBAL nameref to an array ELEMENT marks the ARRAY
-          exported (``declare -n r='a[1]'; r=5`` → ``declare -ax a``), where a
+        - a PLAIN assignment through a GLOBAL nameref to an array ELEMENT
+          marks the ARRAY exported (``declare -n r='a[1]'; r=5`` →
+          ``declare -ax a``), as does an explicit ``declare -x r=5``, where a
           direct ``a[1]=5`` does not — bash's nameref path rebinds the array;
-          a LOCAL nameref (``local -n``, an in-function ``declare -n``) never
-          marks it, wherever the write happens;
+          a declaration under ``set -a`` (``declare r=5``, ``declare -g r=5``)
+          and a LOCAL nameref (``local -n``, an in-function ``declare -n``)
+          never mark it, wherever the write happens;
         - a whole-array write never is (bash does not export arrays), nor is a
           dynamic special (``set -a; RANDOM=5`` seeds RANDOM unexported);
         - an attribute-only change to an EXISTING variable never reaches this

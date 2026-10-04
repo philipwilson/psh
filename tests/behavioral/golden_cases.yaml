@@ -12559,3 +12559,10 @@
   stdout: "declare -a a=([0]=\"1\")\ndeclare -a a=([0]=\"1\" [1]=\"2\")\ndeclare -ax a=([0]=\"1\" [1]=\"2\" [2]=\"3\")\n"
   stderr: ""
   exit_code: 0
+
+- name: c028_declare_through_global_nameref_does_not_mark_array
+  description: "C028 boundary: through a global nameref to an element, a plain r=5 under set -a marks the array -ax but declare r=5 does not; declare -x r=5 always does"
+  command: "set -a; a=(); declare -n r='a[0]'; declare r=5; declare -p a; r=6; declare -p a; b=(); declare -n s='b[0]'; set +a; declare -x s=1; declare -p b"
+  stdout: "declare -a a=([0]=\"5\")\ndeclare -ax a=([0]=\"6\")\ndeclare -ax b=([0]=\"1\")\n"
+  stderr: ""
+  exit_code: 0
